@@ -21,8 +21,9 @@ export interface MqttConfig {
 
 export interface UseMqttReturn {
   status: ConnectionStatus;
+  errorMessage: string | null;
   sensors: SensorData;
-  publish: (topic: string, message: string) => void;
+  publish: (topic: string, message: string) => boolean;
   connect: (config: MqttConfig) => void;
   disconnect: () => void;
   config: MqttConfig;
@@ -36,17 +37,19 @@ const DEFAULT_CONFIG: MqttConfig = {
   clientId: `smarthome_${Math.random().toString(16).slice(2, 8)}`,
 };
 
-const TOPICS = [
+const SUBSCRIBED_TOPICS = [
   "home/temp",
   "home/hum",
   "home/motion",
   "home/led/status",
   "home/buzzer/status",
+  "home/alarm/status",
 ];
 
 export function useMqtt(): UseMqttReturn {
   const clientRef = useRef<MqttClient | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [config, setConfig] = useState<MqttConfig>(DEFAULT_CONFIG);
   const [sensors, setSensors] = useState<SensorData>({
     temperature: null,
@@ -59,14 +62,16 @@ export function useMqtt(): UseMqttReturn {
 
   const handleMessage = useCallback((topic: string, payload: Buffer) => {
     const message = payload.toString().trim();
+    console.log(`[MQTT] Message received | Topic: ${topic} | Payload: "${message}"`);
+
     setSensors((prev) => {
       const next = { ...prev, lastUpdate: new Date() };
       if (topic === "home/temp") {
         const val = parseFloat(message);
-        next.temperature = isNaN(val) ? prev.temperature : val;
+        if (!isNaN(val)) next.temperature = val;
       } else if (topic === "home/hum") {
         const val = parseFloat(message);
-        next.humidity = isNaN(val) ? prev.humidity : val;
+        if (!isNaN(val)) next.humidity = val;
       } else if (topic === "home/motion") {
         next.motion =
           message === "1" ||
@@ -89,11 +94,13 @@ export function useMqtt(): UseMqttReturn {
   }, []);
 
   const disconnect = useCallback(() => {
+    console.log("[MQTT] Disconnecting...");
     if (clientRef.current) {
       clientRef.current.end(true);
       clientRef.current = null;
     }
     setStatus("disconnected");
+    setErrorMessage(null);
   }, []);
 
   const connect = useCallback(
@@ -104,50 +111,82 @@ export function useMqtt(): UseMqttReturn {
       }
 
       setStatus("connecting");
+      setErrorMessage(null);
+      console.log(`[MQTT] Connecting to: ${cfg.brokerUrl} | ClientID: ${cfg.clientId}`);
 
       const options: mqtt.IClientOptions = {
         clientId: cfg.clientId,
         clean: true,
         reconnectPeriod: 5000,
-        connectTimeout: 10000,
+        connectTimeout: 12000,
         rejectUnauthorized: false,
       };
 
-      if (cfg.username) options.username = cfg.username;
+      if (cfg.username) {
+        options.username = cfg.username;
+        console.log(`[MQTT] Using username: ${cfg.username}`);
+      }
       if (cfg.password) options.password = cfg.password;
 
       const client = mqtt.connect(cfg.brokerUrl, options);
       clientRef.current = client;
 
       client.on("connect", () => {
+        console.log("[MQTT] Connected successfully!");
         setStatus("connected");
-        TOPICS.forEach((topic) => {
-          client.subscribe(topic, { qos: 0 });
+        setErrorMessage(null);
+        SUBSCRIBED_TOPICS.forEach((topic) => {
+          client.subscribe(topic, { qos: 0 }, (err) => {
+            if (err) {
+              console.error(`[MQTT] Failed to subscribe to ${topic}:`, err);
+            } else {
+              console.log(`[MQTT] Subscribed to: ${topic}`);
+            }
+          });
         });
       });
 
       client.on("message", handleMessage);
 
       client.on("error", (err) => {
-        console.error("MQTT error:", err);
+        const msg = err.message || "Unknown MQTT error";
+        console.error("[MQTT] Error:", err);
         setStatus("error");
+        setErrorMessage(msg);
       });
 
       client.on("close", () => {
+        console.log("[MQTT] Connection closed");
         setStatus((prev) => (prev === "connected" ? "disconnected" : prev));
       });
 
+      client.on("offline", () => {
+        console.warn("[MQTT] Client went offline");
+        setStatus("disconnected");
+      });
+
       client.on("reconnect", () => {
+        console.log("[MQTT] Attempting reconnect...");
         setStatus("connecting");
       });
     },
     [handleMessage]
   );
 
-  const publish = useCallback((topic: string, message: string) => {
-    if (clientRef.current && clientRef.current.connected) {
-      clientRef.current.publish(topic, message, { qos: 0, retain: false });
+  const publish = useCallback((topic: string, message: string): boolean => {
+    const client = clientRef.current;
+    if (!client || !client.connected) {
+      console.warn(`[MQTT] Cannot publish — not connected | Topic: ${topic}`);
+      return false;
     }
+    client.publish(topic, message, { qos: 1, retain: false }, (err) => {
+      if (err) {
+        console.error(`[MQTT] Publish failed | Topic: ${topic} | Error:`, err);
+      } else {
+        console.log(`[MQTT] Published | Topic: ${topic} | Payload: "${message}"`);
+      }
+    });
+    return true;
   }, []);
 
   useEffect(() => {
@@ -158,5 +197,5 @@ export function useMqtt(): UseMqttReturn {
     };
   }, []);
 
-  return { status, sensors, publish, connect, disconnect, config, setConfig };
+  return { status, errorMessage, sensors, publish, connect, disconnect, config, setConfig };
 }

@@ -1,0 +1,112 @@
+Fix and complete this Smart Home IoT dashboard project.
+
+The current project has a working frontend UI, but the backend logic (MQTT communication) is incomplete. Buttons (LED, buzzer, alarm) do not work.
+
+Your task is to fully implement both frontend and backend logic using MQTT and ensure real-time bidirectional communication with an ESP32.
+
+REQUIREMENTS:
+
+1. MQTT CONNECTION:
+
+* Use MQTT over WebSocket (WSS)
+* Connect to HiveMQ Cloud
+* Use:
+
+  * URL: wss://<your-cluster>.s1.eu.hivemq.cloud:8884/mqtt
+  * Username and password authentication
+* Handle connection, reconnection, and error states
+* Show connection status (ONLINE / OFFLINE)
+
+2. SUBSCRIBE TO TOPICS:
+
+* home/temp
+* home/hum
+* home/motion
+* home/led/status
+* home/buzzer/status
+
+Update the UI in real-time when messages are received.
+
+3. PUBLISH (VERY IMPORTANT):
+   Make buttons fully functional:
+
+* LED button:
+
+  * Publish to: home/led
+  * Payload: "ON" or "OFF"
+
+* Buzzer button:
+
+  * Publish to: home/buzzer
+  * Payload: "ON" or "OFF"
+
+* Alarm toggle:
+
+  * Publish to: home/alarm
+  * Payload: "ON" or "OFF"
+
+4. STATE SYNC:
+
+* When ESP32 sends status updates, UI must reflect real state
+* Avoid fake UI state changes (must depend on MQTT messages)
+
+5. SMART ALARM LOGIC:
+
+* If motion detected AND alarm ON:
+
+  * Automatically publish: home/buzzer = ON
+  * Trigger UI alert (red flashing)
+* If no motion:
+
+  * Publish: home/buzzer = OFF
+
+6. DEBUGGING:
+
+* Add console logs for:
+
+  * MQTT connection
+  * Published messages
+  * Received messages
+* Ensure no silent failures
+
+7. CODE STRUCTURE:
+
+* Separate files:
+
+  * mqtt.js (connection + logic)
+  * ui.js (UI updates)
+  * app.js (main logic)
+* Clean and modular code
+
+8. MOBILE APP VERSION:
+   Create a mobile version of this dashboard:
+
+Option A (preferred):
+
+* Use React Native OR Expo
+* Same MQTT topics
+* Same features (LED, buzzer, alarm, sensors)
+
+Option B:
+
+* Make it a Progressive Web App (PWA)
+* Installable on phone
+
+9. UI IMPROVEMENTS:
+
+* Add loading states
+* Add error messages if MQTT fails
+* Add reconnect button
+
+10. FINAL RESULT:
+
+* Fully working dashboard
+* Real-time sync with ESP32
+* Buttons actually control hardware via MQTT
+* Mobile-compatible version included
+
+Also explain clearly:
+
+* how to run the project
+* how to deploy it
+* how to download/export the full code from Replit
