@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { signAccessToken } from "../lib/jwt";
+import { authRateLimit } from "../middleware/authRateLimit";
 
 const router: IRouter = Router();
 
@@ -23,7 +24,7 @@ const loginBodySchema = z.object({
   password: z.string().min(1).max(128),
 });
 
-router.post("/auth/register", async (req, res) => {
+router.post("/auth/register", authRateLimit, async (req, res) => {
   const body = registerBodySchema.safeParse(req.body);
   if (!body.success) {
     return res.status(400).json({ error: "invalid_body" });
@@ -54,7 +55,7 @@ router.post("/auth/register", async (req, res) => {
   return res.json({ token, user });
 });
 
-router.post("/auth/login", async (req, res) => {
+router.post("/auth/login", authRateLimit, async (req, res) => {
   const body = loginBodySchema.safeParse(req.body);
   if (!body.success) {
     return res.status(400).json({ error: "invalid_body" });

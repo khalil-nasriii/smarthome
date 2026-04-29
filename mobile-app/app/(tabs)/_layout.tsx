@@ -16,14 +16,6 @@ function NativeTabLayout() {
         <Icon sf={{ default: "house", selected: "house.fill" }} />
         <Label>Dashboard</Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="notifications">
-        <Icon sf={{ default: "bell", selected: "bell.fill" }} />
-        <Label>Notifications</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="rules">
-        <Icon sf={{ default: "slider.horizontal.3", selected: "slider.horizontal.3" }} />
-        <Label>Rules</Label>
-      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="settings">
         <Icon sf={{ default: "gear", selected: "gear" }} />
         <Label>Settings</Label>
@@ -74,30 +66,6 @@ function ClassicTabLayout() {
               <SymbolView name="house.fill" tintColor={color} size={size} />
             ) : (
               <MaterialCommunityIcons name="view-dashboard" size={size} color={color} />
-            ),
-        }}
-      />
-      <Tabs.Screen
-        name="notifications"
-        options={{
-          title: "Notifications",
-          tabBarIcon: ({ color, size }) =>
-            isIOS ? (
-              <SymbolView name="bell.fill" tintColor={color} size={size} />
-            ) : (
-              <Feather name="bell" size={size} color={color} />
-            ),
-        }}
-      />
-      <Tabs.Screen
-        name="rules"
-        options={{
-          title: "Rules",
-          tabBarIcon: ({ color, size }) =>
-            isIOS ? (
-              <SymbolView name="slider.horizontal.3" tintColor={color} size={size} />
-            ) : (
-              <Feather name="sliders" size={size} color={color} />
             ),
         }}
       />

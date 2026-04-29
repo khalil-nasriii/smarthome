@@ -8,8 +8,81 @@ interface ConnectionModalProps {
 }
 
 export function ConnectionModal({ config, onConnect, onClose }: ConnectionModalProps) {
+  const lang = ((typeof window !== "undefined" ? localStorage.getItem("smarthome_lang") : null) ?? "en") as
+    | "en"
+    | "fr"
+    | "ar";
+  const tr = {
+    en: {
+      title: "MQTT Configuration",
+      brokerType: "Broker Type",
+      hivePublic: "HiveMQ Public",
+      hiveCloud: "HiveMQ Cloud",
+      custom: "Custom",
+      brokerUrl: "Broker URL (WSS)",
+      replaceCluster: "Replace YOUR-CLUSTER with your actual HiveMQ Cloud cluster ID",
+      username: "Username",
+      password: "Password",
+      required: "required",
+      optional: "optional",
+      clientId: "Client ID",
+      regen: "Regen",
+      deviceId: "Device ID",
+      subscribe: "Subscribe topics (read from ESP32):",
+      publish: "Publish topics (control ESP32):",
+      cancel: "Cancel",
+      connect: "Connect",
+    },
+    fr: {
+      title: "Configuration MQTT",
+      brokerType: "Type de broker",
+      hivePublic: "HiveMQ Public",
+      hiveCloud: "HiveMQ Cloud",
+      custom: "Personnalisé",
+      brokerUrl: "URL Broker (WSS)",
+      replaceCluster: "Remplacez YOUR-CLUSTER par votre ID de cluster HiveMQ Cloud",
+      username: "Nom d'utilisateur",
+      password: "Mot de passe",
+      required: "requis",
+      optional: "optionnel",
+      clientId: "ID Client",
+      regen: "Régénérer",
+      deviceId: "ID Appareil",
+      subscribe: "Sujets abonnés (lecture ESP32):",
+      publish: "Sujets publiés (contrôle ESP32):",
+      cancel: "Annuler",
+      connect: "Connecter",
+    },
+    ar: {
+      title: "إعداد MQTT",
+      brokerType: "نوع الوسيط",
+      hivePublic: "HiveMQ عام",
+      hiveCloud: "HiveMQ سحابي",
+      custom: "مخصص",
+      brokerUrl: "رابط الوسيط (WSS)",
+      replaceCluster: "استبدل YOUR-CLUSTER بمعرف HiveMQ Cloud الحقيقي",
+      username: "اسم المستخدم",
+      password: "كلمة المرور",
+      required: "مطلوب",
+      optional: "اختياري",
+      clientId: "معرف العميل",
+      regen: "تجديد",
+      deviceId: "معرف الجهاز",
+      subscribe: "مواضيع الاشتراك (قراءة من ESP32):",
+      publish: "مواضيع النشر (التحكم بـ ESP32):",
+      cancel: "إلغاء",
+      connect: "اتصال",
+    },
+  } as const;
+  const t = tr[lang];
   const [form, setForm] = useState<MqttConfig>({ ...config });
-  const [brokerType, setBrokerType] = useState<"hivemq-cloud" | "hivemq-public" | "custom">("hivemq-public");
+  const [brokerType, setBrokerType] = useState<"hivemq-cloud" | "hivemq-public" | "custom">(
+    config.brokerUrl.includes(".hivemq.cloud")
+      ? "hivemq-cloud"
+      : config.brokerUrl.includes("broker.hivemq.com")
+        ? "hivemq-public"
+        : "custom",
+  );
 
   const presets = {
     "hivemq-public": "wss://broker.hivemq.com:8884/mqtt",
@@ -39,7 +112,7 @@ export function ConnectionModal({ config, onConnect, onClose }: ConnectionModalP
             <svg className="w-5 h-5 text-neon-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
             </svg>
-            <h2 className="font-orbitron text-base font-bold text-neon-blue">MQTT Configuration</h2>
+            <h2 className="font-orbitron text-base font-bold text-neon-blue">{t.title}</h2>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors p-1">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -52,7 +125,7 @@ export function ConnectionModal({ config, onConnect, onClose }: ConnectionModalP
           {/* Broker preset buttons */}
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">
-              Broker Type
+              {t.brokerType}
             </label>
             <div className="grid grid-cols-3 gap-2">
               {(["hivemq-public", "hivemq-cloud", "custom"] as const).map((type) => (
@@ -75,7 +148,7 @@ export function ConnectionModal({ config, onConnect, onClose }: ConnectionModalP
                         }
                   }
                 >
-                  {type === "hivemq-public" ? "HiveMQ Public" : type === "hivemq-cloud" ? "HiveMQ Cloud" : "Custom"}
+                  {type === "hivemq-public" ? t.hivePublic : type === "hivemq-cloud" ? t.hiveCloud : t.custom}
                 </button>
               ))}
             </div>
@@ -84,7 +157,7 @@ export function ConnectionModal({ config, onConnect, onClose }: ConnectionModalP
           {/* Broker URL */}
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">
-              Broker URL (WSS)
+              {t.brokerUrl}
             </label>
             <input
               type="text"
@@ -99,7 +172,7 @@ export function ConnectionModal({ config, onConnect, onClose }: ConnectionModalP
             />
             {brokerType === "hivemq-cloud" && (
               <p className="text-xs text-yellow-400/70 mt-1 font-mono">
-                Replace YOUR-CLUSTER with your actual HiveMQ Cloud cluster ID
+                {t.replaceCluster}
               </p>
             )}
           </div>
@@ -108,26 +181,26 @@ export function ConnectionModal({ config, onConnect, onClose }: ConnectionModalP
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">
-                Username
+                {t.username}
               </label>
               <input
                 type="text"
                 value={form.username}
                 onChange={(e) => setForm({ ...form, username: e.target.value })}
                 className="w-full bg-background/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground font-mono focus:outline-none focus:border-primary transition-colors"
-                placeholder={brokerType === "hivemq-cloud" ? "required" : "optional"}
+                placeholder={brokerType === "hivemq-cloud" ? t.required : t.optional}
               />
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">
-                Password
+                {t.password}
               </label>
               <input
                 type="password"
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
                 className="w-full bg-background/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground font-mono focus:outline-none focus:border-primary transition-colors"
-                placeholder={brokerType === "hivemq-cloud" ? "required" : "optional"}
+                placeholder={brokerType === "hivemq-cloud" ? t.required : t.optional}
               />
             </div>
           </div>
@@ -135,7 +208,7 @@ export function ConnectionModal({ config, onConnect, onClose }: ConnectionModalP
           {/* Client ID */}
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">
-              Client ID
+              {t.clientId}
             </label>
             <div className="flex gap-2">
               <input
@@ -149,14 +222,14 @@ export function ConnectionModal({ config, onConnect, onClose }: ConnectionModalP
                 onClick={() => setForm({ ...form, clientId: `smarthome_${Math.random().toString(16).slice(2, 8)}` })}
                 className="px-3 py-2 rounded-lg border border-border text-xs text-muted-foreground hover:border-primary/50 transition-colors font-mono"
               >
-                Regen
+                {t.regen}
               </button>
             </div>
           </div>
 
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">
-              Device ID
+              {t.deviceId}
             </label>
             <input
               type="text"
@@ -169,7 +242,7 @@ export function ConnectionModal({ config, onConnect, onClose }: ConnectionModalP
 
           {/* Info box */}
           <div className="bg-muted/20 rounded-lg p-3 text-xs text-muted-foreground border border-white/5">
-            <p className="font-semibold text-foreground/60 mb-1.5">Subscribe topics (read from ESP32):</p>
+            <p className="font-semibold text-foreground/60 mb-1.5">{t.subscribe}</p>
             <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 font-mono text-muted-foreground/70">
               <span>• home/{form.deviceId}/temp</span>
               <span>• home/{form.deviceId}/led/status</span>
@@ -178,7 +251,7 @@ export function ConnectionModal({ config, onConnect, onClose }: ConnectionModalP
               <span>• home/{form.deviceId}/motion</span>
               <span>• home/{form.deviceId}/alarm/status</span>
             </div>
-            <p className="font-semibold text-foreground/60 mt-2 mb-1">Publish topics (control ESP32):</p>
+            <p className="font-semibold text-foreground/60 mt-2 mb-1">{t.publish}</p>
             <div className="grid grid-cols-3 gap-x-2 gap-y-0.5 font-mono text-muted-foreground/70">
               <span>• home/{form.deviceId}/led</span>
               <span>• home/{form.deviceId}/buzzer</span>
@@ -193,7 +266,7 @@ export function ConnectionModal({ config, onConnect, onClose }: ConnectionModalP
               onClick={onClose}
               className="flex-1 py-2.5 rounded-lg border border-border text-muted-foreground text-sm hover:border-primary/50 transition-colors font-mono"
             >
-              Cancel
+              {t.cancel}
             </button>
             <button
               type="submit"
@@ -205,7 +278,7 @@ export function ConnectionModal({ config, onConnect, onClose }: ConnectionModalP
                 boxShadow: "0 0 20px rgba(0,200,255,0.2)",
               }}
             >
-              Connect
+              {t.connect}
             </button>
           </div>
         </form>

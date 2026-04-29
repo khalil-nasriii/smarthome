@@ -11,13 +11,10 @@ import {
   TextInput,
   View,
 } from "react-native";
-import * as Notifications from "expo-notifications";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { MqttConfig, useMqtt } from "@/context/MqttContext";
-import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
-import { registerPushToken } from "@workspace/api-client-react";
 
 const PRESETS = [
   {
@@ -40,15 +37,26 @@ const PRESETS = [
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { status, errorMessage, config, connect, disconnect, setConfig } = useMqtt();
-  const { signOut, email } = useAuth();
-  const [pushStatus, setPushStatus] = useState<string>("Not registered");
+  const { status, errorMessage, config, connect, disconnect, setConfig, setDeviceId } = useMqtt();
 
   const [form, setForm] = useState<MqttConfig>({ ...config });
-  const [selectedPreset, setSelectedPreset] = useState(0);
+  const [selectedPreset, setSelectedPreset] = useState(
+    config.brokerUrl.includes(".hivemq.cloud")
+      ? 1
+      : config.brokerUrl.includes("broker.hivemq.com")
+        ? 0
+        : 2,
+  );
 
   useEffect(() => {
     setForm({ ...config });
+    setSelectedPreset(
+      config.brokerUrl.includes(".hivemq.cloud")
+        ? 1
+        : config.brokerUrl.includes("broker.hivemq.com")
+          ? 0
+          : 2,
+    );
   }, [config]);
 
   const isConnected = status === "connected";
@@ -62,13 +70,19 @@ export default function SettingsScreen() {
   };
 
   const handleConnect = () => {
-    if (!form.brokerUrl.trim()) {
+    const brokerUrl = form.brokerUrl.trim();
+    if (!brokerUrl) {
       Alert.alert("Missing URL", "Please enter a broker URL.");
       return;
     }
+    if (!/^wss?:\/\//i.test(brokerUrl) && !brokerUrl.includes(".hivemq.cloud")) {
+      Alert.alert("Invalid URL", "Broker URL must include ws:// or wss://");
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setConfig(form);
-    connect(form);
+    const next = { ...form, brokerUrl };
+    setConfig(next);
+    connect(next);
   };
 
   const handleDisconnect = () => {
@@ -98,31 +112,6 @@ export default function SettingsScreen() {
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
-
-  const handleRegisterPush = async () => {
-    try {
-      if (Platform.OS === "web") {
-        Alert.alert("Unavailable", "Expo push token registration is mobile-only.");
-        return;
-      }
-
-      const perms = await Notifications.requestPermissionsAsync();
-      if (perms.status !== "granted") {
-        Alert.alert("Permission denied", "Notification permission is required.");
-        setPushStatus("Permission denied");
-        return;
-      }
-
-      const tokenRes = await Notifications.getExpoPushTokenAsync();
-      await registerPushToken({ expoPushToken: tokenRes.data });
-      setPushStatus("Registered");
-      Alert.alert("Success", "Push token registered with backend.");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to register push token";
-      setPushStatus("Registration failed");
-      Alert.alert("Push registration failed", msg);
-    }
-  };
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -247,7 +236,11 @@ export default function SettingsScreen() {
         <Text style={[styles.label, { color: colors.mutedForeground }]}>DEVICE ID</Text>
         <TextInput
           value={form.deviceId}
-          onChangeText={(v) => setForm((f) => ({ ...f, deviceId: v.trim() || "1" }))}
+          onChangeText={(v) => {
+            const next = v.trim() || "1";
+            setForm((f) => ({ ...f, deviceId: next }));
+            setDeviceId(next);
+          }}
           placeholder="1"
           placeholderTextColor={colors.mutedForeground}
           autoCapitalize="none"
@@ -311,42 +304,6 @@ export default function SettingsScreen() {
             </Text>
           </Pressable>
         )}
-
-        <View style={{ height: 10 }} />
-        <Pressable
-          onPress={handleRegisterPush}
-          style={({ pressed }) => [
-            styles.connectBtn,
-            {
-              backgroundColor: "rgba(0,255,136,0.08)",
-              borderColor: "rgba(0,255,136,0.35)",
-              opacity: pressed ? 0.7 : 1,
-            },
-          ]}
-        >
-          <Feather name="bell" size={18} color={colors.neonGreen} />
-          <Text style={[styles.connectBtnText, { color: colors.neonGreen }]}>
-            Register Push ({pushStatus})
-          </Text>
-        </Pressable>
-
-        <View style={{ height: 10 }} />
-        <Pressable
-          onPress={signOut}
-          style={({ pressed }) => [
-            styles.connectBtn,
-            {
-              backgroundColor: "rgba(255,50,50,0.08)",
-              borderColor: "rgba(255,50,50,0.35)",
-              opacity: pressed ? 0.7 : 1,
-            },
-          ]}
-        >
-          <Feather name="log-out" size={18} color={colors.neonRed} />
-          <Text style={[styles.connectBtnText, { color: colors.neonRed }]}>
-            Logout {email ? `(${email})` : ""}
-          </Text>
-        </Pressable>
       </ScrollView>
     </View>
   );

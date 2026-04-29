@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: smarthome-api
+    env: docker
+    dockerfilePath: ./api-server/Dockerfile
+    plan: starter
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_ISSUER
+        value: smarthomeee
+      - key: JWT_AUDIENCE
+        value: smarthomeee
+      - key: MQTT_URL
+        sync: false
+      - key: MQTT_USERNAME
+        sync: false
+      - key: MQTT_PASSWORD
+        sync: false
+      - key: INFLUX_URL
+        sync: false
+      - key: INFLUX_TOKEN
+        sync: false
+      - key: INFLUX_ORG
+        sync: false
+      - key: INFLUX_BUCKET
+        sync: false
+      - key: ML_SERVICE_URL
+        sync: false
+
+  - type: web
+    name: smarthome-ml
+    env: docker
+    dockerfilePath: ./ml-service/Dockerfile
+    plan: starter

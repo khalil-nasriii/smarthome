@@ -9,6 +9,7 @@ const router: IRouter = Router();
 
 const updateSettingsSchema = z.object({
   alarmEnabled: z.boolean().optional(),
+  tempAlarmEnabled: z.boolean().optional(),
   notificationsEnabled: z.boolean().optional(),
   pushEnabled: z.boolean().optional(),
 });

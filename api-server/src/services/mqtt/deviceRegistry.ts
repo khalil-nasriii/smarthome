@@ -1,35 +1,50 @@
 import { db, devicesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
-type CacheEntry = { exists: boolean; checkedAt: number };
+type CacheEntry = { id: number | null; checkedAt: number };
 
 export class DeviceRegistry {
   private cache = new Map<string, CacheEntry>();
 
   constructor(private ttlMs: number) {}
 
-  async deviceExists(deviceId: string): Promise<boolean> {
+  async resolveDevice(deviceId: string): Promise<number | null> {
     const now = Date.now();
     const cached = this.cache.get(deviceId);
     if (cached && now - cached.checkedAt < this.ttlMs) {
-      return cached.exists;
+      return cached.id;
     }
 
-    const id = Number(deviceId);
-    if (Number.isNaN(id) || id <= 0) {
-      this.cache.set(deviceId, { exists: false, checkedAt: now });
-      return false;
+    // Try numeric ID first (backward compatibility)
+    const numericId = Number(deviceId);
+    if (!Number.isNaN(numericId) && numericId > 0) {
+      const rows = await db
+        .select({ id: devicesTable.id })
+        .from(devicesTable)
+        .where(eq(devicesTable.id, numericId))
+        .limit(1);
+
+      const id = rows[0]?.id ?? null;
+      this.cache.set(deviceId, { id, checkedAt: now });
+      return id;
     }
 
+    // Otherwise look up by hardwareId
     const rows = await db
       .select({ id: devicesTable.id })
       .from(devicesTable)
-      .where(eq(devicesTable.id, id))
+      .where(eq(devicesTable.hardwareId, deviceId))
       .limit(1);
 
-    const exists = rows.length > 0;
-    this.cache.set(deviceId, { exists, checkedAt: now });
-    return exists;
+    const id = rows[0]?.id ?? null;
+    this.cache.set(deviceId, { id, checkedAt: now });
+    return id;
+  }
+
+  // Deprecated shim
+  async deviceExists(deviceId: string): Promise<boolean> {
+    const id = await this.resolveDevice(deviceId);
+    return id !== null;
   }
 }
 

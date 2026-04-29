@@ -2,9 +2,20 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useMqtt } from "@/hooks/useMqtt";
 import { useAlarmSound, useBrowserNotifications } from "@/hooks/useAlarm";
 import { useSensorHistory } from "@/hooks/useSensorHistory";
-import { SensorChart } from "@/components/SensorChart";
+import { TemperatureChart } from "@/components/charts/TemperatureChart";
+import { HumidityChart } from "@/components/charts/HumidityChart";
 import { ConnectionModal } from "@/components/ConnectionModal";
 import { NotificationToast } from "@/components/NotificationToast";
+import { Switch } from "@/components/ui/switch";
+import {
+  Activity,
+  BellRing,
+  Flame,
+  Gauge,
+  Radio,
+  Thermometer,
+  Waves,
+} from "lucide-react";
 import {
   listDevices,
   listNotifications,
@@ -25,12 +36,225 @@ interface Toast {
   type: "alert" | "info" | "success";
 }
 
+const TEMP_ALARM_THRESHOLD_C = 30;
+
+const LS_ALARM_MOTION = "smarthome_alarm_motion";
+const LS_ALARM_TEMP = "smarthome_alarm_temp";
+
+function readStoredAlarms(): { motion: boolean; temp: boolean } {
+  if (typeof window === "undefined") return { motion: false, temp: false };
+  return {
+    motion: localStorage.getItem(LS_ALARM_MOTION) === "true",
+    temp: localStorage.getItem(LS_ALARM_TEMP) === "true",
+  };
+}
+
+function writeStoredAlarms(motion: boolean, temp: boolean) {
+  try {
+    localStorage.setItem(LS_ALARM_MOTION, motion ? "true" : "false");
+    localStorage.setItem(LS_ALARM_TEMP, temp ? "true" : "false");
+  } catch {
+    /* quota / private mode */
+  }
+}
+
 interface PendingState {
-  led: boolean;
+  red: boolean;
+  blue: boolean;
   buzzer: boolean;
 }
 
 let toastId = 0;
+type Lang = "en" | "fr" | "ar";
+
+const translations = {
+  en: {
+    appName: "SmartHome Cloud",
+    appSubtitle: "Mobile IoT dashboard",
+    connected: "Connected",
+    connecting: "Connecting",
+    offline: "Offline",
+    error: "Error",
+    connect: "Connect",
+    disconnect: "Disconnect",
+    temperature: "Temperature",
+    humidity: "Humidity",
+    motion: "Motion",
+    noMotion: "No Motion",
+    motionDetected: "Motion Detected",
+    indoor: "Indoor",
+    relative: "Relative",
+    controls: "Controls",
+    led: "LED",
+    ledRed: "Red LED",
+    ledBlue: "Blue LED",
+    buzzer: "Buzzer",
+    alarm: "Alarm",
+    alarms: "Alarms",
+    alarmMotion: "Motion alarm",
+    alarmTemp: "Temp alarm",
+    pending: "Pending...",
+    on: "ON",
+    off: "OFF",
+    armed: "ARMED",
+    triggered: "TRIGGERED",
+    realtimeCharts: "Realtime Charts",
+    daily: "Daily",
+    weekly: "Weekly",
+    refresh: "Refresh",
+    waitingData: "Waiting for MQTT data...",
+    automationRules: "Automation Rules",
+    serverNotifications: "Server Notifications",
+    liveLogs: "Live MQTT Logs",
+    noRules: "No rules configured for this device.",
+    noServerEvents: "No server-side events yet.",
+    noMqttTraffic: "No MQTT traffic yet.",
+    lastUpdate: "Last update",
+    broker: "Broker",
+    client: "Client",
+    device: "Device",
+    intrusion: "Intrusion detected",
+    intrusionSub: "Motion detected, buzzer activated automatically",
+    tempAlert: "Temperature alert",
+    tempAlertSub: "Temperature crossed threshold while temp alarm is on",
+    dismiss: "Dismiss",
+    notConnectedMsg: "Not connected to MQTT broker.",
+    receiveLiveMsg: "to receive live data and control devices.",
+    alert: "Alert",
+    warning: "Warning",
+    normal: "Normal",
+    motionNight: "motion night",
+    tempThreshold: "temp threshold",
+    anomaly: "anomaly",
+    delete: "Delete",
+    espFooter: "ESP32 Smart Home",
+    mqttFooter: "MQTT over WSS",
+  },
+  fr: {
+    appName: "SmartHome Cloud",
+    appSubtitle: "Tableau IoT mobile",
+    connected: "Connecté",
+    connecting: "Connexion",
+    offline: "Hors ligne",
+    error: "Erreur",
+    connect: "Connecter",
+    disconnect: "Déconnecter",
+    temperature: "Température",
+    humidity: "Humidité",
+    motion: "Mouvement",
+    noMotion: "Aucun mouvement",
+    motionDetected: "Mouvement détecté",
+    indoor: "Intérieur",
+    relative: "Relative",
+    controls: "Contrôles",
+    led: "LED",
+    ledRed: "LED rouge",
+    ledBlue: "LED bleue",
+    buzzer: "Buzzer",
+    alarm: "Alarme",
+    alarms: "Alarmes",
+    alarmMotion: "Alarme mouvement",
+    alarmTemp: "Alarme température",
+    pending: "En attente...",
+    on: "ON",
+    off: "OFF",
+    armed: "ARMÉ",
+    triggered: "DÉCLENCHÉE",
+    realtimeCharts: "Graphiques temps réel",
+    daily: "Jour",
+    weekly: "Semaine",
+    refresh: "Rafraîchir",
+    waitingData: "En attente des données MQTT...",
+    automationRules: "Règles automatiques",
+    serverNotifications: "Notifications serveur",
+    liveLogs: "Logs MQTT en direct",
+    noRules: "Aucune règle pour cet appareil.",
+    noServerEvents: "Aucun événement serveur.",
+    noMqttTraffic: "Aucun trafic MQTT.",
+    lastUpdate: "Dernière mise à jour",
+    broker: "Broker",
+    client: "Client",
+    device: "Appareil",
+    intrusion: "Intrusion détectée",
+    intrusionSub: "Mouvement détecté, buzzer activé automatiquement",
+    tempAlert: "Alerte température",
+    tempAlertSub: "Température au-dessus du seuil avec alarme temp activée",
+    dismiss: "Fermer",
+    notConnectedMsg: "Non connecté au broker MQTT.",
+    receiveLiveMsg: "pour recevoir les données en direct et contrôler les appareils.",
+    alert: "Alerte",
+    warning: "Avertissement",
+    normal: "Normal",
+    motionNight: "mouvement nuit",
+    tempThreshold: "seuil temp",
+    anomaly: "anomalie",
+    delete: "Supprimer",
+    espFooter: "ESP32 Maison Connectée",
+    mqttFooter: "MQTT via WSS",
+  },
+  ar: {
+    appName: "سمارت هوم كلاود",
+    appSubtitle: "لوحة إنترنت الأشياء",
+    connected: "متصل",
+    connecting: "جاري الاتصال",
+    offline: "غير متصل",
+    error: "خطأ",
+    connect: "اتصال",
+    disconnect: "قطع الاتصال",
+    temperature: "درجة الحرارة",
+    humidity: "الرطوبة",
+    motion: "الحركة",
+    noMotion: "لا توجد حركة",
+    motionDetected: "تم اكتشاف حركة",
+    indoor: "داخلي",
+    relative: "نسبية",
+    controls: "التحكم",
+    led: "الإضاءة",
+    ledRed: "LED أحمر",
+    ledBlue: "LED أزرق",
+    buzzer: "الصفارة",
+    alarm: "الإنذار",
+    alarms: "الإنذارات",
+    alarmMotion: "إنذار الحركة",
+    alarmTemp: "إنذار الحرارة",
+    pending: "قيد الانتظار...",
+    on: "تشغيل",
+    off: "إيقاف",
+    armed: "مفعل",
+    triggered: "تم التفعيل",
+    realtimeCharts: "مخططات لحظية",
+    daily: "يومي",
+    weekly: "أسبوعي",
+    refresh: "تحديث",
+    waitingData: "بانتظار بيانات MQTT...",
+    automationRules: "قواعد الأتمتة",
+    serverNotifications: "إشعارات الخادم",
+    liveLogs: "سجلات MQTT المباشرة",
+    noRules: "لا توجد قواعد لهذا الجهاز.",
+    noServerEvents: "لا توجد أحداث من الخادم.",
+    noMqttTraffic: "لا يوجد مرور MQTT بعد.",
+    lastUpdate: "آخر تحديث",
+    broker: "الوسيط",
+    client: "العميل",
+    device: "الجهاز",
+    intrusion: "تم اكتشاف اقتحام",
+    intrusionSub: "تم اكتشاف حركة، تم تفعيل الصفارة تلقائيا",
+    tempAlert: "تنبيه حرارة",
+    tempAlertSub: "تجاوزت الحرارة العتبة مع تفعيل إنذار الحرارة",
+    dismiss: "إغلاق",
+    notConnectedMsg: "غير متصل بوسيط MQTT.",
+    receiveLiveMsg: "لاستقبال البيانات المباشرة والتحكم بالأجهزة.",
+    alert: "تنبيه",
+    warning: "تحذير",
+    normal: "طبيعي",
+    motionNight: "حركة ليلية",
+    tempThreshold: "حد الحرارة",
+    anomaly: "شذوذ",
+    delete: "حذف",
+    espFooter: "منزل ذكي ESP32",
+    mqttFooter: "MQTT عبر WSS",
+  },
+} as const;
 
 export default function Dashboard() {
   const { status, errorMessage, sensors, publish, connect, disconnect, config, setConfig, logs } = useMqtt();
@@ -38,26 +262,55 @@ export default function Dashboard() {
   const { requestPermission, notify } = useBrowserNotifications();
   const { tempHistory, humHistory, addTemperature, addHumidity } = useSensorHistory();
 
-  const [alarmEnabled, setAlarmEnabled] = useState(false);
-  const [alarmTriggered, setAlarmTriggered] = useState(false);
+  const [motionAlarmEnabled, setMotionAlarmEnabled] = useState(
+    () => readStoredAlarms().motion,
+  );
+  const [tempAlarmEnabled, setTempAlarmEnabled] = useState(() => readStoredAlarms().temp);
+  const [motionAlarmTriggered, setMotionAlarmTriggered] = useState(false);
+  const [tempAlarmTriggered, setTempAlarmTriggered] = useState(false);
   const [showConnectionModal, setShowConnectionModal] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [pending, setPending] = useState<PendingState>({ led: false, buzzer: false });
+  const [pending, setPending] = useState<PendingState>({ red: false, blue: false, buzzer: false });
   const [devices, setDevices] = useState<Device[]>([]);
   const [serverEvents, setServerEvents] = useState<NotificationEvent[]>([]);
   const [rules, setRules] = useState<Rule[]>([]);
   const [historyRange, setHistoryRange] = useState<"daily" | "weekly">("daily");
+  const [currentLang, setCurrentLang] = useState<Lang>(
+    () =>
+      (typeof window !== "undefined"
+        ? (localStorage.getItem("smarthome_lang") as Lang | null)
+        : null) ?? "en",
+  );
   const [historyTemp, setHistoryTemp] = useState<{ time: string; value: number }[]>([]);
   const [historyHum, setHistoryHum] = useState<{ time: string; value: number }[]>([]);
   const seenEventIdsRef = useRef<Set<number>>(new Set());
   const prevMotionRef = useRef(false);
-  const prevLedRef = useRef(sensors.ledState);
+  const prevTempAboveRef = useRef(false);
+  const tempSampleInitializedRef = useRef(false);
+  const prevRedLedRef = useRef(sensors.redLedState);
+  const prevBlueLedRef = useRef(sensors.blueLedState);
   const prevBuzzerRef = useRef(sensors.buzzerState);
+  const lastPublishedAlarmPairRef = useRef<string | null>(null);
   const topic = useCallback((leaf: string) => `home/${config.deviceId}/${leaf}`, [config.deviceId]);
+  /** Motion or temp alarm armed → automation owns red + buzzer; manual toggles disabled */
+  const alarmsLockManualOutputs = motionAlarmEnabled || tempAlarmEnabled;
+  const t = useCallback(
+    (key: keyof (typeof translations)["en"]) => translations[currentLang][key],
+    [currentLang],
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem("smarthome_lang", currentLang);
+    document.documentElement.dir = currentLang === "ar" ? "rtl" : "ltr";
+  }, [currentLang]);
 
   useEffect(() => {
     let mounted = true;
-    const load = async (notifyOnNew: boolean) => {
+    let timeoutId: ReturnType<typeof setTimeout>;
+    let nextDelayMs = 10_000;
+
+    const tick = async (notifyOnNew: boolean) => {
       try {
         const [devicesRes, settingsRes, eventsRes] = await Promise.all([
           listDevices(),
@@ -65,9 +318,14 @@ export default function Dashboard() {
           listNotifications({ limit: 20 }),
         ]);
         if (!mounted) return;
+        nextDelayMs = 10_000;
         setDevices(devicesRes.devices);
         setServerEvents(eventsRes.events);
-        setAlarmEnabled(settingsRes.settings.alarmEnabled);
+        const motion = settingsRes.settings.alarmEnabled;
+        const temp = Boolean(settingsRes.settings.tempAlarmEnabled);
+        setMotionAlarmEnabled(motion);
+        setTempAlarmEnabled(temp);
+        writeStoredAlarms(motion, temp);
 
         if (notifyOnNew) {
           for (const event of eventsRes.events) {
@@ -78,18 +336,22 @@ export default function Dashboard() {
         }
         seenEventIdsRef.current = new Set(eventsRes.events.map((e) => e.id));
       } catch {
-        // keep dashboard usable even when API is unreachable
+        nextDelayMs = Math.min(nextDelayMs * 2, 120_000);
+      }
+      if (mounted) {
+        timeoutId = setTimeout(() => tick(true), nextDelayMs);
       }
     };
-    load(false);
-    const interval = setInterval(() => {
-      load(true);
-    }, 10000);
+
+    tick(false);
+
     return () => {
       mounted = false;
-      clearInterval(interval);
+      clearTimeout(timeoutId);
     };
   }, [notify]);
+
+  const rulesBackoffRef = useRef(10_000);
 
   const loadRulesAndHistory = useCallback(async () => {
     try {
@@ -97,6 +359,7 @@ export default function Dashboard() {
         listRules(),
         getHistory({ deviceId: config.deviceId, range: historyRange }),
       ]);
+      rulesBackoffRef.current = 10_000;
       setRules(rulesRes.rules);
       setHistoryTemp(
         historyRes.series.temp.map((p) => ({
@@ -111,12 +374,27 @@ export default function Dashboard() {
         })),
       );
     } catch {
-      // leave existing data untouched when API unavailable
+      rulesBackoffRef.current = Math.min(rulesBackoffRef.current * 2, 120_000);
     }
   }, [config.deviceId, historyRange]);
 
   useEffect(() => {
-    loadRulesAndHistory();
+    let cancelled = false;
+    let tid: ReturnType<typeof setTimeout>;
+
+    const run = async () => {
+      await loadRulesAndHistory();
+      if (!cancelled) {
+        tid = setTimeout(run, rulesBackoffRef.current);
+      }
+    };
+
+    run();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(tid);
+    };
   }, [loadRulesAndHistory]);
 
   const addToast = useCallback((message: string, type: Toast["type"]) => {
@@ -134,13 +412,20 @@ export default function Dashboard() {
     if (sensors.humidity !== null) addHumidity(sensors.humidity);
   }, [sensors.temperature, sensors.humidity, addTemperature, addHumidity]);
 
-  // Clear LED pending state when ESP32 confirms
+  // Clear LED pending when ESP32 confirms
   useEffect(() => {
-    if (sensors.ledState !== prevLedRef.current) {
-      prevLedRef.current = sensors.ledState;
-      setPending((p) => ({ ...p, led: false }));
+    if (sensors.redLedState !== prevRedLedRef.current) {
+      prevRedLedRef.current = sensors.redLedState;
+      setPending((p) => ({ ...p, red: false }));
     }
-  }, [sensors.ledState]);
+  }, [sensors.redLedState]);
+
+  useEffect(() => {
+    if (sensors.blueLedState !== prevBlueLedRef.current) {
+      prevBlueLedRef.current = sensors.blueLedState;
+      setPending((p) => ({ ...p, blue: false }));
+    }
+  }, [sensors.blueLedState]);
 
   // Clear Buzzer pending state when ESP32 confirms
   useEffect(() => {
@@ -150,15 +435,29 @@ export default function Dashboard() {
     }
   }, [sensors.buzzerState]);
 
-  // Smart alarm: trigger when motion detected and alarm is armed
+  // Keep ESP alarm flags in sync when MQTT connects, device id changes, or toggles change.
+  // Key must include deviceId — otherwise after auto-switch from default "1" to ESP32 we skip republish and the board never gets alarm OFF.
+  useEffect(() => {
+    if (status !== "connected") {
+      lastPublishedAlarmPairRef.current = null;
+      return;
+    }
+    const key = `${config.deviceId}|${motionAlarmEnabled},${tempAlarmEnabled}`;
+    if (lastPublishedAlarmPairRef.current === key) return;
+    lastPublishedAlarmPairRef.current = key;
+    publish(topic("alarm/motion"), motionAlarmEnabled ? "ON" : "OFF");
+    publish(topic("alarm/temp"), tempAlarmEnabled ? "ON" : "OFF");
+  }, [status, config.deviceId, motionAlarmEnabled, tempAlarmEnabled, publish, topic]);
+
+  // Motion alarm
   useEffect(() => {
     const motionJustDetected = sensors.motion && !prevMotionRef.current;
     const motionStopped = !sensors.motion && prevMotionRef.current;
     prevMotionRef.current = sensors.motion;
 
     if (motionJustDetected) {
-      if (alarmEnabled) {
-        setAlarmTriggered(true);
+      if (motionAlarmEnabled) {
+        setMotionAlarmTriggered(true);
         playAlarm();
         publish(topic("buzzer"), "ON");
         addToast("Intrusion Detected! Alarm activated.", "alert");
@@ -166,36 +465,113 @@ export default function Dashboard() {
         console.log("[Alarm] Motion detected — auto-triggered buzzer ON");
       } else {
         addToast("Motion detected", "info");
-        console.log("[Alarm] Motion detected — alarm is disarmed, no action");
+        console.log("[Alarm] Motion detected — motion alarm off, no action");
       }
     }
 
-    if (motionStopped && alarmTriggered) {
-      setAlarmTriggered(false);
-      stopAlarm();
-      publish(topic("buzzer"), "OFF");
+    if (motionStopped && motionAlarmTriggered) {
+      setMotionAlarmTriggered(false);
+      if (!tempAlarmTriggered) {
+        stopAlarm();
+        publish(topic("buzzer"), "OFF");
+      }
       addToast("All clear — motion stopped", "success");
-      console.log("[Alarm] Motion cleared — buzzer OFF");
+      console.log("[Alarm] Motion cleared");
     }
-  }, [sensors.motion, alarmEnabled, alarmTriggered, playAlarm, stopAlarm, publish, addToast, notify]);
+  }, [
+    sensors.motion,
+    motionAlarmEnabled,
+    motionAlarmTriggered,
+    tempAlarmTriggered,
+    playAlarm,
+    stopAlarm,
+    publish,
+    addToast,
+    notify,
+    topic,
+  ]);
 
-  // Disarm alarm if toggle is switched off while triggered
+  // Temp alarm (edge crossing threshold)
   useEffect(() => {
-    if (!alarmEnabled && alarmTriggered) {
-      setAlarmTriggered(false);
-      stopAlarm();
-      publish(topic("buzzer"), "OFF");
-      console.log("[Alarm] Disarmed while triggered — buzzer OFF");
+    const temp = sensors.temperature;
+    if (temp === null || Number.isNaN(temp)) return;
+    const above = temp >= TEMP_ALARM_THRESHOLD_C;
+    if (!tempSampleInitializedRef.current) {
+      tempSampleInitializedRef.current = true;
+      prevTempAboveRef.current = above;
+      return;
     }
-  }, [alarmEnabled, alarmTriggered, stopAlarm, publish]);
+    const crossedUp = above && !prevTempAboveRef.current;
+    const crossedDown = !above && prevTempAboveRef.current;
+    prevTempAboveRef.current = above;
 
-  const toggleLed = () => {
-    const next = sensors.ledState ? "OFF" : "ON";
-    const ok = publish(topic("led"), next);
+    if (crossedUp && tempAlarmEnabled) {
+      setTempAlarmTriggered(true);
+      playAlarm();
+      publish(topic("buzzer"), "ON");
+      addToast(`Temperature ≥ ${TEMP_ALARM_THRESHOLD_C}°C — alarm`, "alert");
+      notify("Smart Home Alert", `Temperature crossed ${TEMP_ALARM_THRESHOLD_C}°C`);
+      console.log("[Alarm] Temp threshold crossed — buzzer ON");
+    }
+
+    if (crossedDown && tempAlarmTriggered) {
+      setTempAlarmTriggered(false);
+      if (!motionAlarmTriggered) {
+        stopAlarm();
+        publish(topic("buzzer"), "OFF");
+      }
+      console.log("[Alarm] Temp back below threshold");
+    }
+  }, [
+    sensors.temperature,
+    tempAlarmEnabled,
+    tempAlarmTriggered,
+    motionAlarmTriggered,
+    playAlarm,
+    stopAlarm,
+    publish,
+    addToast,
+    notify,
+    topic,
+  ]);
+
+  useEffect(() => {
+    if (!motionAlarmEnabled && motionAlarmTriggered) {
+      setMotionAlarmTriggered(false);
+      if (!tempAlarmTriggered) {
+        stopAlarm();
+        publish(topic("buzzer"), "OFF");
+      }
+      console.log("[Alarm] Motion alarm disabled while active");
+    }
+  }, [motionAlarmEnabled, motionAlarmTriggered, tempAlarmTriggered, stopAlarm, publish, topic]);
+
+  useEffect(() => {
+    if (!tempAlarmEnabled && tempAlarmTriggered) {
+      setTempAlarmTriggered(false);
+      if (!motionAlarmTriggered) {
+        stopAlarm();
+        publish(topic("buzzer"), "OFF");
+      }
+      console.log("[Alarm] Temp alarm disabled while active");
+    }
+  }, [tempAlarmEnabled, tempAlarmTriggered, motionAlarmTriggered, stopAlarm, publish, topic]);
+
+  const toggleRedLed = () => {
+    const next = sensors.redLedState ? "OFF" : "ON";
+    const ok = publish(topic("red"), next);
     if (ok) {
-      setPending((p) => ({ ...p, led: true }));
-      // Auto-clear pending if no ESP32 confirmation within 5s
-      setTimeout(() => setPending((p) => ({ ...p, led: false })), 5000);
+      setPending((p) => ({ ...p, red: true }));
+      setTimeout(() => setPending((p) => ({ ...p, red: false })), 5000);
+    }
+  };
+
+  const toggleBlueLed = () => {
+    const next = sensors.blueLedState ? "OFF" : "ON";
+    const ok = publish(topic("blue"), next);
+    if (ok) {
+      setPending((p) => ({ ...p, blue: true }));
+      setTimeout(() => setPending((p) => ({ ...p, blue: false })), 5000);
     }
   };
 
@@ -208,12 +584,20 @@ export default function Dashboard() {
     }
   };
 
-  const toggleAlarm = () => {
-    const next = !alarmEnabled;
-    setAlarmEnabled(next);
-    publish(topic("alarm"), next ? "ON" : "OFF");
+  const toggleMotionAlarm = () => {
+    const next = !motionAlarmEnabled;
+    setMotionAlarmEnabled(next);
+    writeStoredAlarms(next, tempAlarmEnabled);
     updateSettings({ alarmEnabled: next }).catch(() => undefined);
-    console.log(`[Alarm] System ${next ? "ARMED" : "DISARMED"} — published ${topic("alarm")}: ${next ? "ON" : "OFF"}`);
+    console.log(`[Alarm] Motion ${next ? "ON" : "OFF"}`);
+  };
+
+  const toggleTempAlarm = () => {
+    const next = !tempAlarmEnabled;
+    setTempAlarmEnabled(next);
+    writeStoredAlarms(motionAlarmEnabled, next);
+    updateSettings({ tempAlarmEnabled: next }).catch(() => undefined);
+    console.log(`[Alarm] Temp ${next ? "ON" : "OFF"}`);
   };
 
   const handleConnect = (cfg: typeof config) => {
@@ -227,10 +611,10 @@ export default function Dashboard() {
   };
 
   const statusMeta = {
-    disconnected: { dot: "bg-gray-500", text: "text-gray-400", label: "OFFLINE" },
-    connecting: { dot: "bg-yellow-400", text: "text-yellow-400", label: "CONNECTING..." },
-    connected: { dot: "status-online", text: "text-neon-green", label: "ONLINE" },
-    error: { dot: "bg-red-500", text: "text-neon-red", label: "ERROR" },
+    disconnected: { dot: "bg-gray-500", text: "text-gray-400", label: t("offline") },
+    connecting: { dot: "bg-yellow-400", text: "text-yellow-400", label: t("connecting") },
+    connected: { dot: "bg-emerald-500", text: "text-emerald-400", label: t("connected") },
+    error: { dot: "bg-red-500", text: "text-red-400", label: t("error") },
   };
   const sc = statusMeta[status];
 
@@ -239,8 +623,8 @@ export default function Dashboard() {
     : "--:--:--";
 
   const isConnected = status === "connected";
-  const chartTemp = historyTemp.length > 0 ? historyTemp : tempHistory;
-  const chartHum = historyHum.length > 0 ? historyHum : humHistory;
+  const chartTemp = [...historyTemp, ...tempHistory].slice(-30);
+  const chartHum = [...historyHum, ...humHistory].slice(-30);
 
   const createDefaultRule = async (type: "motion_night_buzzer" | "temp_threshold_alert" | "anomaly_alert") => {
     try {
@@ -268,16 +652,21 @@ export default function Dashboard() {
     }
   };
 
+  const tempSeverity =
+    sensors.temperature === null ? "normal" : sensors.temperature >= 35 ? "alert" : sensors.temperature >= 30 ? "warn" : "normal";
+  const humSeverity =
+    sensors.humidity === null ? "normal" : sensors.humidity >= 80 ? "warn" : sensors.humidity <= 25 ? "alert" : "normal";
+  const severityStyles = {
+    normal: "border-blue-500/20 text-blue-400",
+    warn: "border-amber-500/25 text-amber-400",
+    alert: "border-red-500/25 text-red-400",
+  } as const;
+
   return (
-    <div className="min-h-screen p-4 md:p-6 relative">
-      {/* Scan line overlay */}
-      <div className="scan-line" />
+    <div className="min-h-screen bg-[#0f172a] text-[#e5e7eb]">
+      {(motionAlarmTriggered || tempAlarmTriggered) && <div className="alarm-overlay" />}
 
-      {/* Alarm flash overlay */}
-      {alarmTriggered && <div className="alarm-overlay" />}
-
-      {/* Toast notifications */}
-      <div className="fixed top-4 right-4 z-50 flex flex-col gap-3">
+      <div className="fixed right-3 top-3 z-50 flex max-w-[90vw] flex-col gap-2 sm:right-6 sm:top-6">
         {toasts.map((toast) => (
           <NotificationToast
             key={toast.id}
@@ -288,36 +677,6 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div className="glass-card p-5 mb-4">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-semibold text-neon-blue uppercase tracking-wider font-orbitron">
-            Automation Rules
-          </span>
-          <span className="text-xs font-mono text-muted-foreground/50">
-            Device {config.deviceId}
-          </span>
-        </div>
-        <div className="flex gap-2 flex-wrap mb-3">
-          <button onClick={() => createDefaultRule("motion_night_buzzer")} className="px-2 py-1 text-xs border border-cyan-500/30 rounded-lg">+ motion night buzzer</button>
-          <button onClick={() => createDefaultRule("temp_threshold_alert")} className="px-2 py-1 text-xs border border-cyan-500/30 rounded-lg">+ temp threshold</button>
-          <button onClick={() => createDefaultRule("anomaly_alert")} className="px-2 py-1 text-xs border border-cyan-500/30 rounded-lg">+ anomaly alert</button>
-        </div>
-        <div className="space-y-1 max-h-36 overflow-auto">
-          {rules
-            .filter((r) => String(r.deviceId) === config.deviceId)
-            .map((rule) => (
-              <div key={rule.id} className="text-xs font-mono flex items-center justify-between">
-                <span className="text-foreground/70">{rule.type}</span>
-                <button onClick={() => removeRule(rule.id)} className="text-red-400">delete</button>
-              </div>
-            ))}
-          {rules.filter((r) => String(r.deviceId) === config.deviceId).length === 0 && (
-            <p className="text-xs font-mono text-muted-foreground/50">No rules for this device.</p>
-          )}
-        </div>
-      </div>
-
-      {/* Connection Modal */}
       {showConnectionModal && (
         <ConnectionModal
           config={config}
@@ -326,560 +685,362 @@ export default function Dashboard() {
         />
       )}
 
-      {/* Header */}
-      <header className="mb-5 flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="font-orbitron text-2xl md:text-3xl font-black text-neon-blue tracking-widest uppercase">
-            SmartHome
-          </h1>
-          <p className="text-xs text-muted-foreground font-mono tracking-wider mt-0.5">
-            IOT CONTROL PANEL v2.0
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3 flex-wrap">
-          <input
-            value={config.deviceId}
-            onChange={(e) => setConfig({ ...config, deviceId: e.target.value.trim() || "1" })}
-            className="px-2 py-1 rounded-lg border border-cyan-500/30 bg-black/20 text-xs font-mono w-20"
-            placeholder="device"
-            title="Device ID"
-          />
-          {devices.length > 0 && (
-            <select
-              value={config.deviceId}
-              onChange={(e) => setConfig({ ...config, deviceId: e.target.value })}
-              className="px-2 py-1 rounded-lg border border-cyan-500/30 bg-black/20 text-xs font-mono"
-            >
-              {devices.map((d) => (
-                <option key={d.id} value={String(d.id)}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-          )}
-          <button
-            onClick={() => {
-              localStorage.removeItem("smarthome_token");
-              location.reload();
-            }}
-            className="px-2 py-1 rounded-lg border border-red-500/30 text-xs font-mono text-red-300"
-          >
-            LOGOUT
-          </button>
-          {/* Status indicator */}
-          <div className="flex items-center gap-2">
-            <span className={`status-dot ${sc.dot}`} style={{ width: 9, height: 9 }} />
-            <span className={`text-xs font-mono font-bold tracking-widest ${sc.text}`}>
-              {sc.label}
-            </span>
-            {status === "connecting" && (
-              <svg className="w-3 h-3 text-yellow-400 connecting-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            )}
-          </div>
-
-          {/* Reconnect button — shows on error or disconnected (if previously configured) */}
-          {(status === "error" || status === "disconnected") && config.brokerUrl && (
-            <button
-              onClick={handleReconnect}
-              className="px-3 py-1.5 text-xs font-semibold rounded-lg border font-mono tracking-wider transition-all"
-              style={{
-                border: "1px solid rgba(255, 200, 0, 0.4)",
-                color: "#ffc800",
-                background: "rgba(255, 200, 0, 0.05)",
-              }}
-            >
-              RECONNECT
-            </button>
-          )}
-
-          {/* Connect / Disconnect button */}
-          <button
-            onClick={() => {
-              if (isConnected) {
-                disconnect();
-                addToast("Disconnected from broker", "info");
-              } else {
-                setShowConnectionModal(true);
-              }
-            }}
-            className="px-4 py-1.5 text-xs font-semibold rounded-lg border transition-all font-mono tracking-wider"
-            style={
-              isConnected
-                ? { border: "1px solid rgba(255,50,50,0.4)", color: "#ff3232", background: "rgba(255,50,50,0.05)" }
-                : { border: "1px solid rgba(0,200,255,0.4)", color: "#00c8ff", background: "rgba(0,200,255,0.05)" }
-            }
-          >
-            {isConnected ? "DISCONNECT" : "CONNECT"}
-          </button>
-        </div>
-      </header>
-
-      {/* Error message banner */}
-      {status === "error" && errorMessage && (
-        <div
-          className="mb-4 rounded-xl p-3 flex items-center gap-3"
-          style={{
-            background: "rgba(255,50,50,0.08)",
-            border: "1px solid rgba(255,50,50,0.35)",
-          }}
-        >
-          <svg className="w-4 h-4 flex-shrink-0 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-          </svg>
-          <div className="flex-1">
-            <p className="text-xs font-semibold text-red-400">MQTT Connection Error</p>
-            <p className="text-xs text-red-300/70 font-mono mt-0.5">{errorMessage}</p>
-          </div>
-          <button
-            onClick={handleReconnect}
-            className="text-xs px-3 py-1 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-all font-mono"
-          >
-            Retry
-          </button>
-        </div>
-      )}
-
-      {/* Alarm alert banner */}
-      {alarmTriggered && (
-        <div
-          className="mb-4 rounded-xl p-4 flex items-center gap-3 border"
-          style={{
-            background: "rgba(255,30,30,0.12)",
-            border: "1px solid rgba(255,50,50,0.6)",
-            boxShadow: "0 0 30px rgba(255,50,50,0.3)",
-          }}
-        >
-          <span className="text-2xl">🚨</span>
-          <div>
-            <p className="font-orbitron font-bold text-base text-neon-red tracking-wide">
-              INTRUSION DETECTED
-            </p>
-            <p className="text-xs text-red-300/70 mt-0.5">
-              Motion detected — buzzer activated automatically
-            </p>
-          </div>
-          <button
-            onClick={() => {
-              setAlarmTriggered(false);
-              stopAlarm();
-              publish(topic("buzzer"), "OFF");
-            }}
-            className="ml-auto text-xs px-3 py-1.5 rounded-lg font-semibold border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-all font-mono"
-          >
-            DISMISS
-          </button>
-        </div>
-      )}
-
-      {/* Offline banner */}
-      {!isConnected && status !== "connecting" && (
-        <div
-          className="mb-4 rounded-xl p-3 flex items-center gap-3"
-          style={{
-            background: "rgba(0,200,255,0.04)",
-            border: "1px solid rgba(0,200,255,0.12)",
-          }}
-        >
-          <svg className="w-4 h-4 text-muted-foreground flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
-          </svg>
-          <p className="text-xs text-muted-foreground">
-            Not connected to MQTT broker. Press{" "}
-            <button onClick={() => setShowConnectionModal(true)} className="text-primary underline underline-offset-2">
-              CONNECT
-            </button>{" "}
-            to start receiving sensor data and controlling devices.
-          </p>
-        </div>
-      )}
-
-      {/* Sensor cards */}
-      <div className="dashboard-grid mb-4">
-        {/* Temperature */}
-        <div className={`glass-card p-5 ${!alarmTriggered ? "neon-blue" : ""}`}>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="#00c8ff">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-              </svg>
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Temperature</span>
-            </div>
-            <span className="text-xs font-mono text-muted-foreground/40">{topic("temp")}</span>
-          </div>
-          <div className="flex items-end gap-2">
-            <span className="font-orbitron text-4xl font-black text-neon-blue">
-              {sensors.temperature !== null ? sensors.temperature.toFixed(1) : "--"}
-            </span>
-            <span className="text-lg text-muted-foreground pb-1">°C</span>
-          </div>
-          {sensors.temperature !== null && (
-            <div className="mt-3 h-1.5 rounded-full overflow-hidden bg-background/40">
-              <div
-                className="h-full rounded-full transition-all duration-1000"
-                style={{
-                  width: `${Math.min(100, Math.max(0, ((sensors.temperature - 10) / 40) * 100))}%`,
-                  background: "linear-gradient(90deg, #00c8ff, #ff3232)",
-                }}
-              />
-            </div>
-          )}
-          <p className="text-xs text-muted-foreground/40 mt-1.5 font-mono">Range: 10°C – 50°C</p>
-        </div>
-
-        {/* Humidity */}
-        <div className="glass-card neon-green p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="#00ff88">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-              </svg>
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Humidity</span>
-            </div>
-            <span className="text-xs font-mono text-muted-foreground/40">{topic("hum")}</span>
-          </div>
-          <div className="flex items-end gap-2">
-            <span className="font-orbitron text-4xl font-black text-neon-green">
-              {sensors.humidity !== null ? sensors.humidity.toFixed(1) : "--"}
-            </span>
-            <span className="text-lg text-muted-foreground pb-1">%</span>
-          </div>
-          {sensors.humidity !== null && (
-            <div className="mt-3 h-1.5 rounded-full overflow-hidden bg-background/40">
-              <div
-                className="h-full rounded-full transition-all duration-1000"
-                style={{
-                  width: `${Math.min(100, Math.max(0, sensors.humidity))}%`,
-                  background: "linear-gradient(90deg, #00ff88, #00c8ff)",
-                }}
-              />
-            </div>
-          )}
-          <p className="text-xs text-muted-foreground/40 mt-1.5 font-mono">Range: 0% – 100%</p>
-        </div>
-
-        {/* Motion */}
-        <div className={`glass-card p-5 transition-all duration-500 ${sensors.motion ? "neon-red" : "neon-blue"}`}>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <svg
-                className={`w-5 h-5 ${sensors.motion ? "motion-detected" : ""}`}
-                fill="none" viewBox="0 0 24 24"
-                stroke={sensors.motion ? "#ff3232" : "#00c8ff"}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-              </svg>
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Motion</span>
-            </div>
-            <span className="text-xs font-mono text-muted-foreground/40">{topic("motion")}</span>
-          </div>
-          <div className="flex items-center gap-3 mt-2">
-            <div
-              className="w-4 h-4 rounded-full flex-shrink-0"
-              style={{
-                background: sensors.motion ? "#ff3232" : "#00c8ff",
-                boxShadow: sensors.motion
-                  ? "0 0 15px #ff3232, 0 0 30px rgba(255,50,50,0.4)"
-                  : "0 0 8px #00c8ff",
-              }}
-            />
-            <span className={`font-orbitron text-2xl font-bold ${sensors.motion ? "text-neon-red" : "text-neon-blue"}`}>
-              {sensors.motion ? "DETECTED" : "NO MOTION"}
-            </span>
-          </div>
-          <p className="text-xs mt-3 font-mono" style={{ color: sensors.motion ? "#ff3232aa" : "#00c8ff55" }}>
-            {sensors.motion ? "⚠ PIR sensor triggered" : "Monitoring active"}
-          </p>
-        </div>
-
-        {/* Device info */}
-        <div className="glass-card p-5 neon-blue">
-          <div className="flex items-center gap-2 mb-3">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="#00c8ff">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Last Update</span>
-          </div>
-          <p className="font-orbitron text-xl font-bold text-neon-blue">{lastUpdateStr}</p>
-          <div className="mt-3 space-y-1.5">
-            <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">Broker:</span>
-              <span className="font-mono text-foreground/50 truncate max-w-[140px]">
-                {config.brokerUrl.replace("wss://", "").split(":")[0]}
-              </span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">Client:</span>
-              <span className="font-mono text-foreground/50">{config.clientId.slice(-10)}</span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">Device:</span>
-              <span className="font-mono text-foreground/50">{config.deviceId}</span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">Status:</span>
-              <span className={`${sc.text} font-bold font-mono`}>{sc.label}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="glass-card p-5 mb-4">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-semibold text-neon-blue uppercase tracking-wider font-orbitron">
-            Server Notifications
-          </span>
-          <span className="text-xs font-mono text-muted-foreground/50">{serverEvents.length} events</span>
-        </div>
-        <div className="max-h-44 overflow-auto space-y-1">
-          {serverEvents.length === 0 ? (
-            <p className="text-xs font-mono text-muted-foreground/50">No server-side events yet.</p>
-          ) : (
-            serverEvents.map((event) => (
-              <div key={event.id} className="text-xs font-mono text-muted-foreground">
-                <span className="text-foreground/80">{event.title}</span>{" "}
-                <span>{event.body}</span>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* Controls row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-        {/* LED Control */}
-        <div className={`glass-card p-5 transition-all duration-500 ${sensors.ledState ? "neon-green" : "neon-blue"}`}>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <svg
-                className={`w-5 h-5 ${sensors.ledState ? "led-on" : ""}`}
-                fill={sensors.ledState ? "#00ff88" : "none"}
-                viewBox="0 0 24 24"
-                stroke={sensors.ledState ? "#00ff88" : "#6b7280"}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" />
-              </svg>
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">LED Light</span>
-            </div>
-            <span className="text-xs font-mono text-muted-foreground/40">{topic("led")}</span>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <span className={`font-orbitron text-2xl font-bold ${sensors.ledState ? "text-neon-green" : "text-muted-foreground"}`}>
-                {pending.led ? "PENDING..." : sensors.ledState ? "ON" : "OFF"}
-              </span>
-              <p className="text-xs text-muted-foreground/40 mt-1 font-mono">
-                {pending.led ? "Waiting for ESP32..." : `Confirmed via ${topic("led/status")}`}
-              </p>
-            </div>
-            <button
-              onClick={toggleLed}
-              disabled={!isConnected || pending.led}
-              className="px-4 py-2.5 rounded-xl text-sm font-bold font-mono transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-              style={
-                sensors.ledState
-                  ? { background: "rgba(0,255,136,0.15)", border: "1px solid rgba(0,255,136,0.5)", color: "#00ff88", boxShadow: "0 0 15px rgba(0,255,136,0.3)" }
-                  : { background: "rgba(0,200,255,0.1)", border: "1px solid rgba(0,200,255,0.3)", color: "#00c8ff" }
-              }
-            >
-              {pending.led ? (
-                <span className="flex items-center gap-1.5">
-                  <svg className="w-3.5 h-3.5 connecting-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  WAIT
-                </span>
-              ) : sensors.ledState ? "TURN OFF" : "TURN ON"}
-            </button>
-          </div>
-        </div>
-
-        {/* Buzzer Control */}
-        <div className={`glass-card p-5 transition-all duration-500 ${sensors.buzzerState ? "neon-red" : "neon-blue"}`}>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <svg
-                className={`w-5 h-5 ${sensors.buzzerState ? "buzzer-active" : ""}`}
-                fill="none" viewBox="0 0 24 24"
-                stroke={sensors.buzzerState ? "#ff3232" : "#6b7280"}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-              </svg>
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Buzzer</span>
-            </div>
-            <span className="text-xs font-mono text-muted-foreground/40">{topic("buzzer")}</span>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <span className={`font-orbitron text-2xl font-bold ${sensors.buzzerState ? "text-neon-red" : "text-muted-foreground"}`}>
-                {pending.buzzer ? "PENDING..." : sensors.buzzerState ? "ACTIVE" : "SILENT"}
-              </span>
-              <p className="text-xs text-muted-foreground/40 mt-1 font-mono">
-                {pending.buzzer ? "Waiting for ESP32..." : `Confirmed via ${topic("buzzer/status")}`}
-              </p>
-            </div>
-            <button
-              onClick={toggleBuzzer}
-              disabled={!isConnected || pending.buzzer}
-              className="px-4 py-2.5 rounded-xl text-sm font-bold font-mono transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-              style={
-                sensors.buzzerState
-                  ? { background: "rgba(255,50,50,0.15)", border: "1px solid rgba(255,50,50,0.5)", color: "#ff3232", boxShadow: "0 0 15px rgba(255,50,50,0.3)" }
-                  : { background: "rgba(0,200,255,0.1)", border: "1px solid rgba(0,200,255,0.3)", color: "#00c8ff" }
-              }
-            >
-              {pending.buzzer ? (
-                <span className="flex items-center gap-1.5">
-                  <svg className="w-3.5 h-3.5 connecting-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  WAIT
-                </span>
-              ) : sensors.buzzerState ? "SILENCE" : "TRIGGER"}
-            </button>
-          </div>
-        </div>
-
-        {/* Alarm System */}
-        <div
-          className={`glass-card p-5 transition-all duration-500 ${
-            alarmEnabled ? (alarmTriggered ? "neon-red" : "neon-green") : "neon-blue"
-          }`}
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <svg
-                className="w-5 h-5"
-                fill="none" viewBox="0 0 24 24"
-                stroke={alarmTriggered ? "#ff3232" : alarmEnabled ? "#00ff88" : "#6b7280"}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-              </svg>
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Alarm System</span>
-            </div>
-            <span className="text-xs font-mono text-muted-foreground/40">{topic("alarm")}</span>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <span
-                className={`font-orbitron text-2xl font-bold ${
-                  alarmTriggered ? "text-neon-red" : alarmEnabled ? "text-neon-green" : "text-muted-foreground"
-                }`}
-              >
-                {alarmTriggered ? "TRIGGERED" : alarmEnabled ? "ARMED" : "DISARMED"}
-              </span>
-              <p className="text-xs text-muted-foreground/40 mt-1 font-mono">
-                {alarmEnabled ? `Publishes ${topic("alarm")} ON` : `Publishes ${topic("alarm")} OFF`}
-              </p>
-            </div>
-
-            <button
-              onClick={toggleAlarm}
-              className={`relative w-14 h-7 rounded-full transition-all duration-300 ${alarmEnabled ? "toggle-track enabled" : "bg-muted/40"}`}
-              style={{
-                border: alarmEnabled ? "1px solid rgba(0,255,136,0.5)" : "1px solid rgba(0,200,255,0.2)",
-              }}
-            >
-              <span
-                className="absolute top-0.5 left-0.5 w-6 h-6 rounded-full transition-transform duration-300"
-                style={{
-                  transform: alarmEnabled ? "translateX(28px)" : "translateX(0)",
-                  background: alarmEnabled ? "rgba(0,255,136,0.9)" : "rgba(200,200,200,0.3)",
-                  boxShadow: alarmEnabled ? "0 0 10px rgba(0,255,136,0.6)" : "none",
-                }}
-              />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Live chart */}
-      <div className="glass-card neon-blue p-5 mb-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="#00c8ff">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z" />
-            </svg>
-            <span className="text-sm font-semibold text-neon-blue uppercase tracking-wider font-orbitron">
-              Live Sensor Data
-            </span>
-          </div>
-          <span className="text-xs font-mono text-muted-foreground/40">{tempHistory.length} / 20 readings</span>
-        </div>
-        <div className="flex gap-2 mb-3">
-          <button
-            onClick={() => setHistoryRange("daily")}
-            className={`px-2 py-1 rounded text-xs font-mono border ${historyRange === "daily" ? "border-cyan-400 text-cyan-300" : "border-white/10 text-muted-foreground"}`}
-          >
-            Daily
-          </button>
-          <button
-            onClick={() => setHistoryRange("weekly")}
-            className={`px-2 py-1 rounded text-xs font-mono border ${historyRange === "weekly" ? "border-cyan-400 text-cyan-300" : "border-white/10 text-muted-foreground"}`}
-          >
-            Weekly
-          </button>
-          <button
-            onClick={loadRulesAndHistory}
-            className="px-2 py-1 rounded text-xs font-mono border border-white/10 text-muted-foreground"
-          >
-            Refresh history
-          </button>
-        </div>
-
-        {chartTemp.length === 0 && chartHum.length === 0 ? (
-          <div className="flex items-center justify-center h-48 text-muted-foreground/30">
-            <div className="text-center">
-              <svg className="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z" />
-              </svg>
-              <p className="text-sm font-mono">Waiting for sensor data...</p>
-              <p className="text-xs mt-1 opacity-70">Connect to MQTT broker to see live charts</p>
-            </div>
-          </div>
-        ) : (
-          <SensorChart tempHistory={chartTemp} humHistory={chartHum} />
-        )}
-      </div>
-
-      <div className="glass-card p-5 mb-4">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-semibold text-neon-blue uppercase tracking-wider font-orbitron">
-            Live MQTT Logs
-          </span>
-          <span className="text-xs font-mono text-muted-foreground/50">{logs.length} entries</span>
-        </div>
-        <div className="max-h-52 overflow-auto space-y-1">
-          {logs.length === 0 ? (
-            <p className="text-xs font-mono text-muted-foreground/50">No MQTT traffic yet.</p>
-          ) : (
-            logs
-              .slice()
-              .reverse()
-              .map((entry) => (
-                <div key={entry.id} className="text-xs font-mono flex gap-2 text-muted-foreground">
-                  <span className={entry.direction === "in" ? "text-green-400" : "text-cyan-400"}>
-                    {entry.direction.toUpperCase()}
-                  </span>
-                  <span>{entry.timestamp.toLocaleTimeString()}</span>
-                  <span className="text-foreground/70">{entry.topic}</span>
-                  <span className="truncate">{entry.payload}</span>
+      <div className="mx-auto w-full max-w-6xl p-4 sm:p-6">
+        <main className="space-y-4 sm:space-y-6">
+          <header className="saas-card rounded-2xl p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="mb-2 flex items-center gap-1">
+                  {(["en", "fr", "ar"] as const).map((lang) => (
+                    <button
+                      key={lang}
+                      onClick={() => setCurrentLang(lang)}
+                      className={`rounded-md border px-2 py-0.5 text-[11px] uppercase transition ${
+                        currentLang === lang
+                          ? "border-blue-500/60 text-blue-300"
+                          : "border-white/10 text-[#9ca3af]"
+                      }`}
+                    >
+                      {lang}
+                    </button>
+                  ))}
                 </div>
-              ))
-          )}
-        </div>
-      </div>
+                <h1 className="text-lg font-semibold sm:text-xl">{t("appName")}</h1>
+                <p className="text-xs text-[#9ca3af]">{t("appSubtitle")}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`h-2.5 w-2.5 rounded-full ${sc.dot}`} />
+                <span className={`text-xs font-medium ${sc.text}`}>{sc.label}</span>
+                <button
+                  onClick={() => {
+                    if (isConnected) {
+                      disconnect();
+                      addToast("Disconnected from broker", "info");
+                    } else {
+                      setShowConnectionModal(true);
+                    }
+                  }}
+                  className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition active:scale-95 ${
+                    isConnected
+                      ? "border-red-500/40 text-red-400"
+                      : "border-blue-500/40 text-blue-400"
+                  }`}
+                >
+                  {isConnected ? t("disconnect") : t("connect")}
+                </button>
+              </div>
+            </div>
+          </header>
 
-      {/* Footer */}
-      <div className="flex items-center justify-between text-xs text-muted-foreground/30 font-mono px-1">
-        <span>ESP32 Smart Home</span>
-        <span>MQTT over WSS — PWA Ready</span>
-        <span>{new Date().toLocaleDateString()}</span>
+          {status === "error" && errorMessage && (
+            <div className="saas-card rounded-2xl border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+              MQTT connection error: {errorMessage}
+            </div>
+          )}
+
+          {(motionAlarmTriggered || tempAlarmTriggered) && (
+            <div className="saas-card flex items-center gap-3 rounded-2xl border-red-500/40 bg-red-500/10 p-4">
+              <Flame className="h-5 w-5 text-red-400" />
+              <div>
+                <p className="text-sm font-semibold text-red-300">
+                  {motionAlarmTriggered && tempAlarmTriggered
+                    ? `${t("intrusion")} · ${t("tempAlert")}`
+                    : motionAlarmTriggered
+                      ? t("intrusion")
+                      : t("tempAlert")}
+                </p>
+                <p className="text-xs text-red-200/80">
+                  {motionAlarmTriggered && tempAlarmTriggered
+                    ? `${t("intrusionSub")} ${t("tempAlertSub")}`
+                    : motionAlarmTriggered
+                      ? t("intrusionSub")
+                      : t("tempAlertSub")}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setMotionAlarmTriggered(false);
+                  setTempAlarmTriggered(false);
+                  stopAlarm();
+                  publish(topic("buzzer"), "OFF");
+                }}
+                className="ml-auto rounded-xl border border-red-500/40 px-3 py-1.5 text-xs text-red-300 transition active:scale-95"
+              >
+                {t("dismiss")}
+              </button>
+            </div>
+          )}
+
+          <section className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className={`saas-card rounded-2xl p-4 ${severityStyles[tempSeverity]}`}>
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm text-[#9ca3af]">
+                  <Thermometer className="h-4 w-4" />
+                  {t("temperature")}
+                </div>
+                <span className="text-xs text-[#9ca3af]">{t("indoor")}</span>
+              </div>
+              <p className="text-4xl font-semibold">
+                {sensors.temperature !== null ? sensors.temperature.toFixed(1) : "--"}
+                <span className="ml-1 text-base text-[#9ca3af]">°C</span>
+              </p>
+              <p className="mt-2 text-xs text-[#9ca3af]">
+                {tempSeverity === "alert" ? t("alert") : tempSeverity === "warn" ? t("warning") : t("normal")}
+              </p>
+            </div>
+
+            <div className={`saas-card rounded-2xl p-4 ${severityStyles[humSeverity]}`}>
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm text-[#9ca3af]">
+                  <Waves className="h-4 w-4" />
+                  {t("humidity")}
+                </div>
+                <span className="text-xs text-[#9ca3af]">{t("relative")}</span>
+              </div>
+              <p className="text-4xl font-semibold">
+                {sensors.humidity !== null ? sensors.humidity.toFixed(1) : "--"}
+                <span className="ml-1 text-base text-[#9ca3af]">%</span>
+              </p>
+              <p className="mt-2 text-xs text-[#9ca3af]">
+                {humSeverity === "alert" ? t("alert") : humSeverity === "warn" ? t("warning") : t("normal")}
+              </p>
+            </div>
+
+            <div className="saas-card rounded-2xl p-4">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm text-[#9ca3af]">
+                  <Activity className={`h-4 w-4 transition ${sensors.motion ? "animate-pulse text-emerald-400" : ""}`} />
+                  {t("motion")}
+                </div>
+                <span className="text-xs text-[#9ca3af]">{topic("motion")}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className={`h-2.5 w-2.5 rounded-full ${sensors.motion ? "bg-emerald-400" : "bg-gray-500"}`} />
+                <span className="text-base font-medium">{sensors.motion ? t("motionDetected") : t("noMotion")}</span>
+              </div>
+            </div>
+
+            <div className="saas-card rounded-2xl p-4 md:col-span-2 lg:col-span-3">
+              <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2 md:grid-cols-4">
+                <div><span className="text-[#9ca3af]">{t("lastUpdate")}:</span> <span>{lastUpdateStr}</span></div>
+                <div className="truncate"><span className="text-[#9ca3af]">{t("broker")}:</span> <span>{config.brokerUrl.replace("wss://", "").split(":")[0]}</span></div>
+                <div><span className="text-[#9ca3af]">{t("client")}:</span> <span>{config.clientId.slice(-10)}</span></div>
+                <div><span className="text-[#9ca3af]">{t("device")}:</span> <span>{config.deviceId}</span></div>
+              </div>
+            </div>
+          </section>
+
+          {!isConnected && status !== "connecting" && (
+            <div className="saas-card rounded-2xl border-blue-500/20 bg-blue-500/5 p-3 text-sm text-[#9ca3af]">
+              {t("notConnectedMsg")}{" "}
+              <button onClick={() => setShowConnectionModal(true)} className="text-blue-400 underline">
+                {t("connect")}
+              </button>{" "}
+              {t("receiveLiveMsg")}
+            </div>
+          )}
+
+          <section className="saas-card rounded-2xl p-4">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-[#9ca3af]">{t("controls")}</h3>
+              <Radio className="h-4 w-4 text-[#9ca3af]" />
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="rounded-2xl border border-white/10 bg-[#111827] p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm text-[#9ca3af]">{t("ledRed")}</p>
+                  <Switch
+                    checked={sensors.redLedState}
+                    onCheckedChange={() => toggleRedLed()}
+                    disabled={!isConnected || pending.red || alarmsLockManualOutputs}
+                    className="h-7 w-12 data-[state=checked]:bg-red-500"
+                  />
+                </div>
+                <p className={`text-lg font-semibold ${sensors.redLedState ? "text-red-400" : "text-[#9ca3af]"}`}>
+                  {pending.red ? t("pending") : sensors.redLedState ? t("on") : t("off")}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-[#111827] p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm text-[#9ca3af]">{t("ledBlue")}</p>
+                  <Switch
+                    checked={sensors.blueLedState}
+                    onCheckedChange={() => toggleBlueLed()}
+                    disabled={!isConnected || pending.blue}
+                    className="h-7 w-12 data-[state=checked]:bg-blue-500"
+                  />
+                </div>
+                <p className={`text-lg font-semibold ${sensors.blueLedState ? "text-blue-400" : "text-[#9ca3af]"}`}>
+                  {pending.blue ? t("pending") : sensors.blueLedState ? t("on") : t("off")}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-[#111827] p-4 sm:col-span-2 lg:col-span-1">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm text-[#9ca3af]">{t("buzzer")}</p>
+                  <Switch
+                    checked={sensors.buzzerState}
+                    onCheckedChange={() => toggleBuzzer()}
+                    disabled={!isConnected || pending.buzzer || alarmsLockManualOutputs}
+                    className="h-7 w-12 data-[state=checked]:bg-amber-500"
+                  />
+                </div>
+                <p className={`text-lg font-semibold ${sensors.buzzerState ? "text-amber-400" : "text-[#9ca3af]"}`}>
+                  {pending.buzzer ? t("pending") : sensors.buzzerState ? t("on") : t("off")}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 border-t border-white/10 pt-4">
+              <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#9ca3af]">{t("alarms")}</h4>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="rounded-2xl border border-white/10 bg-[#111827] p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <p className="text-sm text-[#9ca3af]">{t("alarmMotion")}</p>
+                    <Switch
+                      checked={motionAlarmEnabled}
+                      onCheckedChange={() => toggleMotionAlarm()}
+                      className="h-7 w-12 data-[state=checked]:bg-emerald-500"
+                    />
+                  </div>
+                  <p
+                    className={`text-lg font-semibold ${motionAlarmTriggered ? "text-red-400" : motionAlarmEnabled ? "text-emerald-400" : "text-[#9ca3af]"}`}
+                  >
+                    {motionAlarmTriggered ? t("triggered") : motionAlarmEnabled ? t("armed") : t("off")}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-[#111827] p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <p className="text-sm text-[#9ca3af]">{t("alarmTemp")}</p>
+                    <Switch
+                      checked={tempAlarmEnabled}
+                      onCheckedChange={() => toggleTempAlarm()}
+                      className="h-7 w-12 data-[state=checked]:bg-emerald-500"
+                    />
+                  </div>
+                  <p
+                    className={`text-lg font-semibold ${tempAlarmTriggered ? "text-red-400" : tempAlarmEnabled ? "text-emerald-400" : "text-[#9ca3af]"}`}
+                  >
+                    {tempAlarmTriggered ? t("triggered") : tempAlarmEnabled ? t("armed") : t("off")}
+                  </p>
+                  <p className="mt-1 text-[10px] text-[#6b7280]">
+                    ≥ {TEMP_ALARM_THRESHOLD_C}°C ({t("temperature").toLowerCase()})
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="saas-card rounded-2xl p-4">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-[#9ca3af]">{t("realtimeCharts")}</h3>
+              <div className="flex gap-2 text-xs">
+                <button
+                  onClick={() => setHistoryRange("daily")}
+                  className={`rounded-xl border px-3 py-1.5 transition active:scale-95 ${historyRange === "daily" ? "border-blue-500/50 text-blue-400" : "border-white/10 text-[#9ca3af]"}`}
+                >
+                  {t("daily")}
+                </button>
+                <button
+                  onClick={() => setHistoryRange("weekly")}
+                  className={`rounded-xl border px-3 py-1.5 transition active:scale-95 ${historyRange === "weekly" ? "border-blue-500/50 text-blue-400" : "border-white/10 text-[#9ca3af]"}`}
+                >
+                  {t("weekly")}
+                </button>
+                <button
+                  onClick={loadRulesAndHistory}
+                  className="rounded-xl border border-white/10 px-3 py-1.5 text-[#9ca3af] transition active:scale-95"
+                >
+                  {t("refresh")}
+                </button>
+              </div>
+            </div>
+            {chartTemp.length === 0 && chartHum.length === 0 ? (
+              <div className="flex h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-white/15 bg-[#111827] text-center">
+                <Gauge className="h-8 w-8 text-[#9ca3af]/50" />
+                <p className="mt-2 text-sm text-[#e5e7eb]">{t("waitingData")}</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <TemperatureChart data={chartTemp} lang={currentLang} />
+                <HumidityChart data={chartHum} lang={currentLang} />
+              </div>
+            )}
+          </section>
+
+          <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <div className="saas-card rounded-2xl p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-[#9ca3af]">{t("automationRules")}</h3>
+                  <span className="text-xs text-[#9ca3af]">{t("device")} {config.deviceId}</span>
+                </div>
+                <div className="mb-3 flex flex-wrap gap-2">
+                  <button onClick={() => createDefaultRule("motion_night_buzzer")} className="rounded-xl border border-white/10 px-2.5 py-1 text-xs text-[#9ca3af] transition active:scale-95">+ {t("motionNight")}</button>
+                  <button onClick={() => createDefaultRule("temp_threshold_alert")} className="rounded-xl border border-white/10 px-2.5 py-1 text-xs text-[#9ca3af] transition active:scale-95">+ {t("tempThreshold")}</button>
+                  <button onClick={() => createDefaultRule("anomaly_alert")} className="rounded-xl border border-white/10 px-2.5 py-1 text-xs text-[#9ca3af] transition active:scale-95">+ {t("anomaly")}</button>
+                </div>
+                <div className="space-y-2 text-xs">
+                  {rules.filter((r) => String(r.deviceId) === config.deviceId).map((rule) => (
+                    <div key={rule.id} className="flex items-center justify-between rounded-md border border-white/10 bg-[#0b1224] px-2.5 py-2">
+                      <span className="text-[#e5e7eb]">{rule.type}</span>
+                      <button onClick={() => removeRule(rule.id)} className="text-red-400 transition hover:text-red-300">{t("delete")}</button>
+                    </div>
+                  ))}
+                  {rules.filter((r) => String(r.deviceId) === config.deviceId).length === 0 && <p className="text-[#9ca3af]">{t("noRules")}</p>}
+                </div>
+              </div>
+
+              <div className="saas-card rounded-2xl p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-[#9ca3af]">{t("serverNotifications")}</h3>
+                  <BellRing className="h-4 w-4 text-[#9ca3af]" />
+                </div>
+                <div className="max-h-48 space-y-2 overflow-auto text-xs">
+                  {serverEvents.length === 0 ? (
+                    <p className="text-[#9ca3af]">{t("noServerEvents")}</p>
+                  ) : (
+                    serverEvents.map((event) => (
+                      <div key={event.id} className="rounded-md border border-white/10 bg-[#0b1224] p-2.5">
+                        <p className="font-medium text-[#e5e7eb]">{event.title}</p>
+                        <p className="text-[#9ca3af]">{event.body}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="saas-card rounded-2xl p-4 lg:col-span-1">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-[#9ca3af]">{t("liveLogs")}</h3>
+                  <span className="text-xs text-[#9ca3af]">{logs.length} entries</span>
+                </div>
+                <div className="max-h-48 space-y-1 overflow-auto text-xs">
+                  {logs.length === 0 ? (
+                    <p className="text-[#9ca3af]">{t("noMqttTraffic")}</p>
+                  ) : (
+                    logs
+                      .slice()
+                      .reverse()
+                      .map((entry) => (
+                        <div key={entry.id} className="flex gap-2 rounded-md border border-white/10 bg-[#0b1224] px-2 py-1.5">
+                          <span className={entry.direction === "in" ? "text-emerald-400" : "text-blue-400"}>{entry.direction.toUpperCase()}</span>
+                          <span className="text-[#9ca3af]">{entry.timestamp.toLocaleTimeString()}</span>
+                          <span className="truncate text-[#e5e7eb]">{entry.topic}</span>
+                        </div>
+                      ))
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <footer className="flex items-center justify-between border-t border-white/10 pt-4 text-xs text-[#9ca3af]">
+              <span>{t("espFooter")}</span>
+              <span>{t("mqttFooter")}</span>
+              <span>{new Date().toLocaleDateString()}</span>
+            </footer>
+        </main>
       </div>
     </div>
   );

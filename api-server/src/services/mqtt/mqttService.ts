@@ -35,6 +35,10 @@ export class MqttService extends EventEmitter {
       logger.warn("MQTT_URL not set; MQTT service will not start.");
       return;
     }
+    if (!url.startsWith("mqtts://")) {
+      logger.error({ mqttUrl: url }, "MQTT_URL must use mqtts:// for TLS");
+      return;
+    }
 
     const options: IClientOptions = {
       username: process.env["MQTT_USERNAME"] || undefined,
@@ -42,6 +46,8 @@ export class MqttService extends EventEmitter {
       reconnectPeriod: 2_000,
       keepalive: 30,
       clean: true,
+      protocol: "mqtts",
+      rejectUnauthorized: true,
     };
 
     this.client = mqtt.connect(url, options);

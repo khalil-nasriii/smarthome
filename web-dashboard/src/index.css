@@ -73,12 +73,12 @@
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
 
-  --background: 222 47% 4%;
-  --foreground: 200 100% 92%;
-  --border: 220 30% 18%;
-  --card: 220 40% 7%;
-  --card-foreground: 200 100% 92%;
-  --card-border: 220 30% 15%;
+  --background: 222 47% 12%;
+  --foreground: 220 14% 90%;
+  --border: 220 20% 22%;
+  --card: 222 28% 13%;
+  --card-foreground: 220 14% 90%;
+  --card-border: 220 20% 22%;
   --sidebar: 222 47% 5%;
   --sidebar-foreground: 200 100% 88%;
   --sidebar-border: 220 30% 16%;
@@ -90,36 +90,36 @@
   --popover: 220 40% 7%;
   --popover-foreground: 200 100% 92%;
   --popover-border: 220 30% 18%;
-  --primary: 195 100% 50%;
-  --primary-foreground: 222 47% 4%;
+  --primary: 217 91% 60%;
+  --primary-foreground: 222 47% 12%;
   --secondary: 220 40% 12%;
   --secondary-foreground: 200 100% 88%;
   --muted: 220 35% 10%;
   --muted-foreground: 220 20% 55%;
-  --accent: 142 70% 45%;
-  --accent-foreground: 222 47% 4%;
+  --accent: 142 71% 45%;
+  --accent-foreground: 222 47% 12%;
   --destructive: 0 90% 55%;
   --destructive-foreground: 0 0% 100%;
   --input: 220 30% 18%;
-  --ring: 195 100% 50%;
-  --chart-1: 195 100% 50%;
-  --chart-2: 142 70% 45%;
+  --ring: 217 91% 60%;
+  --chart-1: 217 91% 60%;
+  --chart-2: 142 71% 45%;
   --chart-3: 0 90% 55%;
   --chart-4: 270 80% 65%;
   --chart-5: 35 90% 55%;
 
-  --app-font-sans: 'Inter', 'Orbitron', sans-serif;
+  --app-font-sans: 'Inter', sans-serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: 'JetBrains Mono', Menlo, monospace;
   --radius: .75rem;
-  --shadow-2xs: 0 0 20px rgba(0, 200, 255, 0.05);
-  --shadow-xs: 0 0 20px rgba(0, 200, 255, 0.08);
-  --shadow-sm: 0 2px 8px rgba(0, 200, 255, 0.1);
-  --shadow: 0 4px 16px rgba(0, 200, 255, 0.15);
-  --shadow-md: 0 8px 24px rgba(0, 200, 255, 0.2);
-  --shadow-lg: 0 0 40px rgba(0, 200, 255, 0.25);
-  --shadow-xl: 0 0 60px rgba(0, 200, 255, 0.3);
-  --shadow-2xl: 0 0 80px rgba(0, 200, 255, 0.35);
+  --shadow-2xs: 0 1px 2px rgba(2, 6, 23, 0.2);
+  --shadow-xs: 0 2px 4px rgba(2, 6, 23, 0.22);
+  --shadow-sm: 0 6px 16px rgba(2, 6, 23, 0.24);
+  --shadow: 0 8px 22px rgba(2, 6, 23, 0.28);
+  --shadow-md: 0 12px 30px rgba(2, 6, 23, 0.3);
+  --shadow-lg: 0 14px 36px rgba(2, 6, 23, 0.34);
+  --shadow-xl: 0 20px 42px rgba(2, 6, 23, 0.36);
+  --shadow-2xl: 0 24px 52px rgba(2, 6, 23, 0.38);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
 
@@ -139,52 +139,62 @@
   body {
     @apply font-sans antialiased bg-background text-foreground;
     background-image:
-      radial-gradient(ellipse at 20% 50%, rgba(0, 200, 255, 0.05) 0%, transparent 50%),
-      radial-gradient(ellipse at 80% 20%, rgba(0, 255, 136, 0.04) 0%, transparent 40%),
-      radial-gradient(ellipse at 60% 80%, rgba(255, 50, 50, 0.03) 0%, transparent 40%);
+      radial-gradient(ellipse at 20% 0%, rgba(59, 130, 246, 0.1) 0%, transparent 45%),
+      radial-gradient(ellipse at 100% 0%, rgba(34, 197, 94, 0.06) 0%, transparent 35%);
   }
 }
 
-/* Neon glow effects */
+/* Legacy utility classes retained with subtle styling */
 .neon-blue {
-  box-shadow: 0 0 10px rgba(0, 200, 255, 0.4), 0 0 20px rgba(0, 200, 255, 0.2), inset 0 0 10px rgba(0, 200, 255, 0.05);
+  box-shadow: 0 8px 20px rgba(2, 6, 23, 0.25);
 }
 
 .neon-green {
-  box-shadow: 0 0 10px rgba(0, 255, 136, 0.4), 0 0 20px rgba(0, 255, 136, 0.2), inset 0 0 10px rgba(0, 255, 136, 0.05);
+  box-shadow: 0 8px 20px rgba(2, 6, 23, 0.25);
 }
 
 .neon-red {
-  box-shadow: 0 0 10px rgba(255, 50, 50, 0.5), 0 0 30px rgba(255, 50, 50, 0.3), inset 0 0 10px rgba(255, 50, 50, 0.1);
+  box-shadow: 0 8px 20px rgba(2, 6, 23, 0.25);
 }
 
 .text-neon-blue {
-  color: #00c8ff;
-  text-shadow: 0 0 10px rgba(0, 200, 255, 0.8), 0 0 20px rgba(0, 200, 255, 0.4);
+  color: #60a5fa;
+  text-shadow: none;
 }
 
 .text-neon-green {
-  color: #00ff88;
-  text-shadow: 0 0 10px rgba(0, 255, 136, 0.8), 0 0 20px rgba(0, 255, 136, 0.4);
+  color: #22c55e;
+  text-shadow: none;
 }
 
 .text-neon-red {
-  color: #ff3232;
-  text-shadow: 0 0 10px rgba(255, 50, 50, 0.8), 0 0 20px rgba(255, 50, 50, 0.4);
+  color: #ef4444;
+  text-shadow: none;
 }
 
-/* Glassmorphism card */
 .glass-card {
-  background: rgba(10, 18, 35, 0.7);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(0, 200, 255, 0.12);
-  border-radius: 1rem;
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.9) 0%, rgba(15, 23, 42, 0.92) 100%);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 30px rgba(2, 6, 23, 0.35);
 }
 
 .glass-card:hover {
-  border-color: rgba(0, 200, 255, 0.25);
-  transition: border-color 0.3s ease;
+  border-color: rgba(148, 163, 184, 0.25);
+  transition: border-color 0.2s ease, transform 0.2s ease;
+  transform: scale(1.01);
+}
+
+.saas-card {
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.9) 0%, rgba(17, 24, 39, 0.8) 100%);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 0.75rem;
+  box-shadow: 0 12px 28px rgba(2, 6, 23, 0.35);
+}
+
+.saas-card:hover {
+  border-color: rgba(148, 163, 184, 0.25);
+  transition: all 0.2s ease;
 }
 
 /* Alert flash animation */
@@ -239,7 +249,7 @@
   left: 0;
   right: 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent, rgba(0, 200, 255, 0.2), transparent);
+  background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.18), transparent);
   pointer-events: none;
   z-index: 1000;
   animation: scanLine 6s linear infinite;
@@ -259,8 +269,8 @@
 }
 
 .status-online {
-  background: #00ff88;
-  color: #00ff88;
+  background: #22c55e;
+  color: #22c55e;
   animation: statusPulse 2s ease-in-out infinite;
 }
 
@@ -295,8 +305,8 @@
 }
 
 .toggle-track.enabled {
-  background: rgba(0, 255, 136, 0.3);
-  box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+  background: rgba(34, 197, 94, 0.3);
+  box-shadow: none;
 }
 
 /* Grid layout */
@@ -320,16 +330,16 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(0, 200, 255, 0.03);
+  background: rgba(148, 163, 184, 0.08);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 200, 255, 0.2);
+  background: rgba(148, 163, 184, 0.25);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 200, 255, 0.4);
+  background: rgba(148, 163, 184, 0.4);
 }
 
 /* Screen red flash overlay */

@@ -7,7 +7,8 @@ export interface SensorData {
   temperature: number | null;
   humidity: number | null;
   motion: boolean;
-  ledState: boolean;
+  redLedState: boolean;
+  blueLedState: boolean;
   buzzerState: boolean;
   lastUpdate: Date | null;
 }
@@ -41,16 +42,32 @@ export interface UseMqttReturn {
 }
 
 const DEFAULT_CONFIG: MqttConfig = {
-  brokerUrl: "wss://broker.hivemq.com:8884/mqtt",
-  username: "",
-  password: "",
+  brokerUrl:
+    (import.meta.env.VITE_MQTT_BROKER_URL as string | undefined) ??
+    "wss://broker.hivemq.com:8884/mqtt",
+  username: (import.meta.env.VITE_MQTT_USERNAME as string | undefined) ?? "",
+  password: (import.meta.env.VITE_MQTT_PASSWORD as string | undefined) ?? "",
   clientId: `smarthome_${Math.random().toString(16).slice(2, 8)}`,
-  deviceId: "1",
+  deviceId: (import.meta.env.VITE_MQTT_DEVICE_ID as string | undefined) ?? "1",
 };
 let logId = 0;
 
 function sensorTopic(deviceId: string, leaf: string) {
   return `home/${deviceId}/${leaf}`;
+}
+
+function normalizeBrokerUrl(rawUrl: string): string {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return trimmed;
+  // Browser MQTT client must use websocket scheme.
+  const wsNormalized = trimmed
+    .replace(/^mqtts:\/\//i, "wss://")
+    .replace(/^mqtt:\/\//i, "ws://");
+  // HiveMQ Cloud WSS endpoint usually requires /mqtt path.
+  if (wsNormalized.includes(".hivemq.cloud") && !wsNormalized.endsWith("/mqtt")) {
+    return `${wsNormalized.replace(/\/+$/, "")}/mqtt`;
+  }
+  return wsNormalized;
 }
 
 export function useMqtt(): UseMqttReturn {
@@ -63,10 +80,17 @@ export function useMqtt(): UseMqttReturn {
     temperature: null,
     humidity: null,
     motion: false,
-    ledState: false,
+    redLedState: false,
+    blueLedState: false,
     buzzerState: false,
     lastUpdate: null,
   });
+
+  /** MQTT client binds message handler once at connect — must not read stale deviceId from closure. */
+  const deviceIdRef = useRef(config.deviceId);
+  useEffect(() => {
+    deviceIdRef.current = config.deviceId;
+  }, [config.deviceId]);
 
   const handleMessage = useCallback((topic: string, payload: Buffer) => {
     const message = payload.toString().trim();
@@ -76,26 +100,68 @@ export function useMqtt(): UseMqttReturn {
       { id: ++logId, direction: "in", topic, payload: message, timestamp: new Date() },
     ]);
 
-    const topicPrefix = `home/${config.deviceId}/`;
-    if (!topic.startsWith(topicPrefix)) return;
-    const leaf = topic.slice(topicPrefix.length);
+    if (!message) {
+      console.warn(`[MQTT] Ignoring empty payload for topic: ${topic}`);
+      return;
+    }
+
+    const parts = topic.split("/");
+    if (parts.length < 2 || parts[0] !== "home") {
+      console.warn(`[MQTT] Ignoring unexpected topic shape: ${topic}`);
+      return;
+    }
+
+    let topicDeviceId = deviceIdRef.current;
+    let leaf = "";
+
+    // Supports both home/<deviceId>/<leaf> and home/<leaf> patterns.
+    if (parts.length >= 3) {
+      topicDeviceId = parts[1];
+      leaf = parts.slice(2).join("/");
+    } else {
+      leaf = parts[1];
+    }
+
+    const activeId = deviceIdRef.current;
+    if (topicDeviceId !== activeId && parts.length >= 3) {
+      console.log(
+        `[MQTT] Auto-switching device from ${activeId} to ${topicDeviceId} based on live topic`,
+      );
+      deviceIdRef.current = topicDeviceId;
+      setConfig((prev) =>
+        prev.deviceId === topicDeviceId ? prev : { ...prev, deviceId: topicDeviceId },
+      );
+    }
 
     setSensors((prev) => {
       const next = { ...prev, lastUpdate: new Date() };
       if (leaf === "temp") {
         const val = parseFloat(message);
-        if (!isNaN(val)) next.temperature = val;
+        if (Number.isFinite(val)) {
+          next.temperature = val;
+        } else {
+          console.warn(`[MQTT] Invalid temperature payload: "${message}"`);
+        }
       } else if (leaf === "hum") {
         const val = parseFloat(message);
-        if (!isNaN(val)) next.humidity = val;
+        if (Number.isFinite(val)) {
+          next.humidity = val;
+        } else {
+          console.warn(`[MQTT] Invalid humidity payload: "${message}"`);
+        }
       } else if (leaf === "motion") {
         next.motion =
           message === "1" ||
           message.toLowerCase() === "true" ||
           message.toLowerCase() === "detected" ||
           message.toLowerCase() === "motion";
-      } else if (leaf === "led/status") {
-        next.ledState =
+      } else if (leaf === "red/status") {
+        next.redLedState =
+          message.toLowerCase() === "on" ||
+          message === "1" ||
+          message.toLowerCase() === "true";
+      } else if (leaf === "blue/status" || leaf === "led/status") {
+        next.blueLedState =
           message.toLowerCase() === "on" ||
           message === "1" ||
           message.toLowerCase() === "true";
@@ -104,10 +170,21 @@ export function useMqtt(): UseMqttReturn {
           message.toLowerCase() === "on" ||
           message === "1" ||
           message.toLowerCase() === "true";
+      } else if (
+        leaf === "red" ||
+        leaf === "blue" ||
+        leaf === "led" ||
+        leaf === "buzzer" ||
+        leaf === "alarm" ||
+        leaf.startsWith("alarm/")
+      ) {
+        // Command topics (echoes / retained) — UI follows …/status topics
+      } else {
+        console.log(`[MQTT] Unhandled topic leaf "${leaf}"`);
       }
       return next;
     });
-  }, [config.deviceId]);
+  }, []);
 
   const disconnect = useCallback(() => {
     console.log("[MQTT] Disconnecting...");
@@ -126,9 +203,10 @@ export function useMqtt(): UseMqttReturn {
         clientRef.current = null;
       }
 
+      const normalizedUrl = normalizeBrokerUrl(cfg.brokerUrl);
       setStatus("connecting");
       setErrorMessage(null);
-      console.log(`[MQTT] Connecting to: ${cfg.brokerUrl} | ClientID: ${cfg.clientId} | Device: ${cfg.deviceId}`);
+      console.log(`[MQTT] Connecting to: ${normalizedUrl} | ClientID: ${cfg.clientId} | Device: ${cfg.deviceId}`);
 
       const options: mqtt.IClientOptions = {
         clientId: cfg.clientId,
@@ -144,29 +222,22 @@ export function useMqtt(): UseMqttReturn {
       }
       if (cfg.password) options.password = cfg.password;
 
-      const client = mqtt.connect(cfg.brokerUrl, options);
+      const client = mqtt.connect(normalizedUrl, options);
       clientRef.current = client;
 
       client.on("connect", () => {
-        console.log("[MQTT] Connected successfully!");
+        console.log("[MQTT] Connected successfully");
         setStatus("connected");
         setErrorMessage(null);
-        const subscribedTopics = [
-          sensorTopic(cfg.deviceId, "temp"),
-          sensorTopic(cfg.deviceId, "hum"),
-          sensorTopic(cfg.deviceId, "motion"),
-          sensorTopic(cfg.deviceId, "led/status"),
-          sensorTopic(cfg.deviceId, "buzzer/status"),
-          sensorTopic(cfg.deviceId, "alarm/status"),
-        ];
-        subscribedTopics.forEach((topic) => {
-          client.subscribe(topic, { qos: 0 }, (err) => {
-            if (err) {
-              console.error(`[MQTT] Failed to subscribe to ${topic}:`, err);
-            } else {
-              console.log(`[MQTT] Subscribed to: ${topic}`);
-            }
-          });
+        const wildcardTopic = "home/#";
+        client.subscribe(wildcardTopic, { qos: 0 }, (err) => {
+          if (err) {
+            console.error(`[MQTT] Failed to subscribe to ${wildcardTopic}:`, err);
+          } else {
+            console.log(
+              `[MQTT] Subscribed to wildcard: ${wildcardTopic} (active device filter: ${cfg.deviceId})`,
+            );
+          }
         });
       });
 

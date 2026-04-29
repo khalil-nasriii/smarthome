@@ -14,6 +14,7 @@ export const devicesTable = pgTable(
   {
     id: serial("id").primaryKey(),
     name: text("name").notNull(),
+    hardwareId: text("hardware_id").unique(),
     userId: integer("user_id")
       .notNull()
       .references(() => usersTable.id, { onDelete: "cascade" }),

@@ -10,7 +10,10 @@ export const userSettingsTable = pgTable(
       .notNull()
       .references(() => usersTable.id, { onDelete: "cascade" }),
 
+    /** When true, motion can trigger client/server intrusion-style alarms. */
     alarmEnabled: boolean("alarm_enabled").notNull().default(false),
+    /** When true, high-temperature crossing can trigger client-side temp alarm. */
+    tempAlarmEnabled: boolean("temp_alarm_enabled").notNull().default(false),
     notificationsEnabled: boolean("notifications_enabled").notNull().default(true),
     pushEnabled: boolean("push_enabled").notNull().default(false),
 

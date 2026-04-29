@@ -16,7 +16,7 @@
   },
   "references": [
     {
-      "path": "../../shared/api-client-react"
+      "path": "../shared/api-client-react"
     }
   ]
 }

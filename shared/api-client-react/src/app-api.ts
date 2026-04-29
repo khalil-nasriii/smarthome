@@ -20,6 +20,7 @@ export type UserSettings = {
   id: number;
   userId: number;
   alarmEnabled: boolean;
+  tempAlarmEnabled: boolean;
   notificationsEnabled: boolean;
   pushEnabled: boolean;
   expoPushToken: string | null;
@@ -93,7 +94,9 @@ export async function getSettings() {
   });
 }
 
-export async function updateSettings(body: Partial<Pick<UserSettings, "alarmEnabled" | "notificationsEnabled" | "pushEnabled">>) {
+export async function updateSettings(
+  body: Partial<Pick<UserSettings, "alarmEnabled" | "tempAlarmEnabled" | "notificationsEnabled" | "pushEnabled">>,
+) {
   return customFetch<{ settings: UserSettings }>("/api/settings", {
     method: "PUT",
     body: JSON.stringify(body),

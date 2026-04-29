@@ -6,32 +6,41 @@ import { mlService } from "../ml";
 import { automationEngine } from "../automation";
 
 export function initMqttService() {
+  mqttService.on("error", (err) => {
+    logger.error({ err }, "MQTT service error (continuing without MQTT)");
+  });
+
   mqttService.start();
 
   mqttService.on("sensor", async (msg) => {
     try {
-      const known = await deviceRegistry.deviceExists(msg.deviceId);
-      if (!known) {
-        logger.warn({ deviceId: msg.deviceId, topic: msg.topic }, "Unknown device; ignoring MQTT message");
+      const internalId = await deviceRegistry.resolveDevice(msg.deviceId);
+      if (internalId === null) {
+        logger.warn(
+          { deviceId: msg.deviceId, topic: msg.topic },
+          "Unknown device; ignoring MQTT message",
+        );
         return;
       }
 
+      const deviceIdStr = internalId.toString();
+
       await influxService.writeSensor(
-        msg.deviceId,
+        deviceIdStr,
         msg.metric,
         msg.payload,
         msg.receivedAt,
       );
 
       const analysis = await mlService.analyzeSensor({
-        deviceId: msg.deviceId,
+        deviceId: deviceIdStr,
         metric: msg.metric,
         payload: msg.payload,
         timestamp: msg.receivedAt,
       });
 
       await automationEngine.handleSensorEvent({
-        deviceId: msg.deviceId,
+        deviceId: deviceIdStr,
         metric: msg.metric,
         payload: msg.payload,
         receivedAt: msg.receivedAt,
@@ -40,14 +49,21 @@ export function initMqttService() {
 
       if (analysis?.anomaly) {
         logger.warn(
-          { deviceId: msg.deviceId, metric: msg.metric, kind: analysis.kind, score: analysis.score },
+          {
+            deviceId: deviceIdStr,
+            hardwareId: msg.deviceId,
+            metric: msg.metric,
+            kind: analysis.kind,
+            score: analysis.score,
+          },
           "Anomaly detected",
         );
       }
 
       logger.info(
         {
-          deviceId: msg.deviceId,
+          deviceId: deviceIdStr,
+          hardwareId: msg.deviceId,
           metric: msg.metric,
           topic: msg.topic,
           payload: msg.payload.toString(),
